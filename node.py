@@ -298,16 +298,16 @@ def clientHandler(communication_socket, address):
 
                 # add message
                 if command in [b'general', b'spam', b'casual']:
-                    # msg = channel.get() + ':::' + self_authentication_public_key_string + ':::' + text + ':::' + signature
+                    # msg = channel.get().encode() + ':::'.encode() + cipher.encrypt(self_authentication_public_key_string) + ':::'.encode() + cipher.encrypt(text) + ':::'.encode()
+                    # sendall(client_socket, msg + sign(text.encode()))
                     sender_public_key = cipher.decrypt(content.split(b':::')[0].decode())
-                    signature = cipher.decrypt(content.split(b':::')[-1])
-                    content = cipher.decrypt(b':::'.join(content.split(b':::')[1:-1]))
+                    signature = content.split(b':::')[-1]
+                    content = cipher.decrypt(b':::'.join(content.split(b':::')[1:-1]).decode())
                     
                     print("Content:", content, "\nSender Public Key", sender_public_key)
 
-                    if verify(sender_public_key, signature, content):
-                        text = content.decode()
-                        add_message(sender_public_key, text, command.decode())
+                    if verify(sender_public_key, signature, content.encode()):
+                        add_message(sender_public_key, content, command.decode())
                         show_messages()
 
                         ## TODO - resend (gossip protocol) and discard duplicate messages
@@ -441,7 +441,7 @@ def create_sender(address, server_public_key):
         with dict_lock_servers:
             servers[address] = client_socket
         with dict_lock_ciphers:
-            servers[address] = cipher
+            ciphers[address] = cipher
         print(servers)
 
     except Exception as e:
@@ -663,8 +663,8 @@ def send_message():
 
             # encrypt and sign message
             cipher = ciphers[address]
-            msg = channel.get() + ':::' + cipher.encrypt(self_authentication_public_key_string) + ':::' + cipher.encrypt(text) + ':::'
-            sendall(client_socket, msg.encode() + cipher.encrypt(sign(text.encode())))
+            msg = channel.get().encode() + ':::'.encode() + cipher.encrypt(self_authentication_public_key_string) + ':::'.encode() + cipher.encrypt(text) + ':::'.encode()
+            sendall(client_socket, msg + sign(text.encode()))
    
     update_listbox(display)
 
