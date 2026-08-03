@@ -284,6 +284,8 @@ def clientHandler(communication_socket, address):
         cipher = GCM(encrypted) ## TODO - actually use this cipher
 
         print('---MAINTAING CONNECTION FOR CLIENT', address, '---')
+
+        '''
         while True:
             # take in new messages
             message = get_message()
@@ -313,6 +315,16 @@ def clientHandler(communication_socket, address):
                         ## TODO - resend (gossip protocol) and discard duplicate messages
                     else:
                         print("SIGNATURE INVALID")
+        '''
+        while True:
+            # take in new messages
+            message = get_message().decode()
+            if not message: return
+            print("MESSAGE:", message, "FROM", address)
+           
+            cipher = GCM(encrypted)
+            content = cipher.decrypt(message)
+            print("CONTENT", content)
 
     except Exception as e:
         print('---ERROR ERROR FOR CLIENT', address, '---')
@@ -663,8 +675,13 @@ def send_message():
 
             # encrypt and sign message
             cipher = ciphers[address]
+
+            '''
             msg = channel.get().encode() + ':::'.encode() + cipher.encrypt(self_authentication_public_key_string) + ':::'.encode() + cipher.encrypt(text) + ':::'.encode()
             sendall(client_socket, msg + sign(text.encode()))
+            '''
+
+            sendall(client_socket, cipher.encrypt("hello test test test"))
    
     update_listbox(display)
 
