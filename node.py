@@ -281,11 +281,10 @@ def clientHandler(communication_socket, address):
                         sendall(communication_socket, 'invalid'.encode())
 
         # initialise AES cipher
-        cipher = GCM(encrypted) ## TODO - actually use this cipher
+        cipher = GCM(encrypted)
 
         print('---MAINTAING CONNECTION FOR CLIENT', address, '---')
 
-        '''
         while True:
             # take in new messages
             message = get_message()
@@ -302,9 +301,9 @@ def clientHandler(communication_socket, address):
                 if command in [b'general', b'spam', b'casual']:
                     # msg = channel.get().encode() + ':::'.encode() + cipher.encrypt(self_authentication_public_key_string) + ':::'.encode() + cipher.encrypt(text) + ':::'.encode()
                     # sendall(client_socket, msg + sign(text.encode()))
-                    sender_public_key = cipher.decrypt(content.split(b':::')[0].decode())
+                    sender_public_key = cipher.decrypt(content.split(b':::')[0])
                     signature = content.split(b':::')[-1]
-                    content = cipher.decrypt(b':::'.join(content.split(b':::')[1:-1]).decode())
+                    content = cipher.decrypt(b':::'.join(content.split(b':::')[1:-1]))
                     
                     print("Content:", content, "\nSender Public Key", sender_public_key)
 
@@ -315,16 +314,6 @@ def clientHandler(communication_socket, address):
                         ## TODO - resend (gossip protocol) and discard duplicate messages
                     else:
                         print("SIGNATURE INVALID")
-        '''
-        while True:
-            # take in new messages
-            message = get_message().decode()
-            if not message: return
-            print("MESSAGE:", message, "FROM", address)
-           
-            cipher = GCM(encrypted)
-            content = cipher.decrypt(message)
-            print("CONTENT", content)
 
     except Exception as e:
         print('---ERROR ERROR FOR CLIENT', address, '---')
@@ -453,7 +442,7 @@ def create_sender(address, server_public_key):
         with dict_lock_servers:
             servers[address] = client_socket
         with dict_lock_ciphers:
-            ciphers[address] = cipher
+            ciphers[address] = byteKey
         print(servers)
 
     except Exception as e:
@@ -674,14 +663,11 @@ def send_message():
             print('ADDRESS:', address)
 
             # encrypt and sign message
-            cipher = ciphers[address]
+            byteKey = ciphers[address]
+            cipher = GCM(byteKey)
 
-            '''
             msg = channel.get().encode() + ':::'.encode() + cipher.encrypt(self_authentication_public_key_string) + ':::'.encode() + cipher.encrypt(text) + ':::'.encode()
             sendall(client_socket, msg + sign(text.encode()))
-            '''
-
-            sendall(client_socket, cipher.encrypt("hello test test test"))
    
     update_listbox(display)
 
