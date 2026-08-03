@@ -1,2 +1,5 @@
-<?<?xml version="1.0"?>
-<messages></messages>
+<?xml version="1.0" encoding="utf-8"?>
+<?xml version="1.0"?><messages><message><text>test!</text><user>ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAINH3usLlJV1vJSy0iXxAU3HKBngtBaeeEPDcIYwbsb7T aidan@debian
+</user><channel>general</channel></message><message><text>test 2</text><user>ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAINH3usLlJV1vJSy0iXxAU3HKBngtBaeeEPDcIYwbsb7T aidan@debian
+</user><channel>general</channel></message><message><text>i cant see your messages. for some reason, you cannot connect to me.</text><user>ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAINH3usLlJV1vJSy0iXxAU3HKBngtBaeeEPDcIYwbsb7T aidan@debian
+</user><channel>general</channel></message></messages>

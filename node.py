@@ -189,7 +189,6 @@ def clientHandler(communication_socket, address):
 
         # identify addresses
         address, _ = address
-        mac_address = gma(ip=address)
 
         authenticated_self = False
         authenticated_client = False
@@ -300,7 +299,7 @@ def clientHandler(communication_socket, address):
                     # msg = channel.get() + ':::' + self_authentication_public_key_string + ':::' + text + ':::' + signature
                     sender_public_key = content.split(b':::')[0].decode()
                     signature = content.split(b':::')[-1]
-                    content = b':::'.join(content.split(b':::')[1:-2])
+                    content = b':::'.join(content.split(b':::')[1:-1])
                     
                     print("Content:", content, "\nSender Public Key", sender_public_key)
 
@@ -332,24 +331,22 @@ def clientHandler(communication_socket, address):
                 all_servers.remove(address)
         print(all_servers, servers)
 
-# listening socket
-def create_listener():
-    # set up server
-    server = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-
-    server.bind(('0.0.0.0', 65432))
-    server.listen(5)
-
-    return server
-
 # listen for clients
 def listen():
     print('LISTENING...')
 
-    listener = create_listener()
+    # set up server
+    listener = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+
+    listener.bind(('0.0.0.0', 65432))
+    listener.listen(5)
+
+    print("Server set up :D")
    
     while True:
         communication_socket, address = listener.accept()
+
+        print("CONNECTION DETECTED FROM:", address)
 
         # make new thread for each client
         client = threading.Thread(target=clientHandler, args=(communication_socket, address,))
@@ -568,15 +565,8 @@ def add_message(user, text, channel):
 ## MAIN LOGIC
 ####################
 
-# main logic
-def main():
-    # listen for clients in the background
-    t = Thread(target=spawn_senders)
-    t.start()
-
-    listen()
-
-Thread(target=main).start()
+Thread(target=listen).start()
+Thread(target=spawn_senders).start()
 
 ####################
 ## MESSAGE HANDLING
@@ -697,5 +687,7 @@ send_but = tk.Button(send, text='Send', command=send_message)
 send_text.grid()
 send_but.grid()
 send.grid(row=1, column=0, columnspan=1)
+
+show_messages()
 
 tk.mainloop()
