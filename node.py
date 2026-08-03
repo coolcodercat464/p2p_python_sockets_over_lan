@@ -280,7 +280,7 @@ def clientHandler(communication_socket, address):
                         sendall(communication_socket, 'invalid'.encode())
 
         # initialise AES cipher
-        cipher = GCM(encrypted)
+        cipher = GCM(encrypted) ## TODO - actually use this cipher
 
         print('---MAINTAING CONNECTION FOR CLIENT', address, '---')
         while True:
@@ -295,14 +295,23 @@ def clientHandler(communication_socket, address):
                 command = splitted[0]
                 content = b':::'.join(splitted[1:])
 
-                # challenges
+                # add message
                 if command in [b'general', b'spam', b'casual']:
-                    display = content.decode()
-                    print('RECEIVED MESSAGE:', display)
-                    username = display.split(':')[0]
-                    text = ':'.join(display.split(':')[1:])
-                    add_message(username, text, command.decode())
-                    show_messages()
+                    # msg = channel.get() + ':::' + self_authentication_public_key_string + ':::' + text + ':::' + signature
+                    sender_public_key = content.split(b':::')[0].decode()
+                    signature = content.split(b':::')[-1]
+                    content = b':::'.join(content.split(b':::')[1:-2])
+                    
+                    print("Content:", content, "\nSender Public Key", sender_public_key)
+
+                    if verify(sender_public_key, signature, content):
+                        text = content.decode()
+                        add_message(sender_public_key, text, command.decode())
+                        show_messages()
+
+                        ## TODO - resend (gossip protocol) and discard duplicate messages
+                    else:
+                        print("SIGNATURE INVALID")
 
     except Exception as e:
         print('---ERROR ERROR FOR CLIENT', address, '---')
@@ -352,16 +361,7 @@ def listen():
 
 # sending socket
 def spawn_senders():
-    with open('connections.xml') as f:
-        data = f.read()
-
-    Bs_data = BeautifulSoup(data, "xml")
-    b_connections = Bs_data.find_all("connections")
-
-    try:
-        data = {connection.find_all("address")[0].text: connection.find_all("key")[0].text for connection in b_connections}
-    except:
-        data = dict()
+    data = read_connections()
 
     print('SPAWNING SENDERS TO:')
     for address, key in data.items():
@@ -460,15 +460,57 @@ def create_sender(address, server_public_key):
 
 # thread safety
 file_lock_messages = threading.Lock() # for messages
+file_lock_connections = threading.Lock() # for connections
 
-## TODO ADD FUNCTIONS FOR CONNECTIONS.XML TOO
+# reads the connections.xml file
+# <connections><connection><address>...</address> <key>...</key></connection>... </connections>
+def read_connections():
+    # thread safety
+    with file_lock_connections:
+        with open('connections.xml') as f:
+            data = f.read()
+    
+        Bs_data = BeautifulSoup(data, "xml")
+        b_connections = Bs_data.find_all("connections")
+    
+        try:
+            data = {connection.find_all("address")[0].text: connection.find_all("key")[0].text for connection in b_connections}
+        except:
+            data = dict()
+       
+    return data
+
+# add an entry into connections.xml
+def add_connection(address, key):
+    with file_lock_connections:
+        with open('connections.xml', 'r') as f:
+            bs = BeautifulSoup(f, 'xml')
+
+    # add data
+    address_tag = bs.new_tag("address")
+    address_tag.string = address
+
+    key_tag = bs.new_tag("key")
+    key_tag.string = key
+
+    # add subtags to msg tag
+    con_tag = bs.new_tag("connection")
+    con_tag.append(address_tag)
+    con_tag.append(key_tag)
+
+    # add con tag to file
+    connections = bs.find("connections")
+    connections.append(con_tag)
+
+    with file_lock_connections:
+        with open('connections.xml', 'w') as f:
+            f.write(str(bs))
 
 # reads the messages.xml file
 # <messages><message><text>...</text> <user>...</user> <channel>...</channel></message>... </messages>
 def read_messages():
     # thread safety
     with file_lock_messages:
-        ## TODO - add xml data decryption
         with open('messages.xml') as f:
             data = f.read()
 
@@ -483,15 +525,22 @@ def read_messages():
        
     return data
 
+# get hostname (username) from user's public key
+# ssh-rsa ACTUAL_KEY user@hostname
+def parse_user_key(user):
+    username = user.split(' ')[-1]
+    user_hostname = username.split('@')[-1]
+    return user_hostname
+
 # add an entry into messages.xml
-def add_message(username, text, channel):
+def add_message(user, text, channel):
     with file_lock_messages:
         with open('messages.xml', 'r') as f:
             bs = BeautifulSoup(f, 'xml')
 
     # add data
     user_tag = bs.new_tag("user")
-    user_tag.string = str(username)
+    user_tag.string = user
 
     text_tag = bs.new_tag("text")
     text_tag.string = text
@@ -554,7 +603,7 @@ def show_messages(event=None):
     for each in data:
         # ensure message is in the correct channel
         if each['channel'] == channel.get():
-            display = f"{each['user']}: {each['text']}"
+            display = f"{parse_user_key(each['user'])}: {each['text']}"
             listbox.insert(c, display)
             c += 1
 
@@ -587,7 +636,7 @@ def send_message():
         text_tag.string = text
 
         user_tag = bs.new_tag("user")
-        user_tag.string = server_user['username']
+        user_tag.string = self_authentication_public_key_string
 
         channel_tag = bs.new_tag("channel")
         channel_tag.string = channel.get()
@@ -605,15 +654,15 @@ def send_message():
         with open('messages.xml', 'w') as f:
             f.write(str(bs))
 
-    display = f"{server_user['username']}: {text}"
+    msg = channel.get() + ':::' + self_authentication_public_key_string + ':::' + text + ':::'
+    display = self_hostname + ': ' + text
 
     print('---SENDING MESSAGE TO ALL SERVERS---')
     with dict_lock_servers:
         for address, client_socket in servers.items():
             print('ADDRESS:', address)
 
-            msg = channel.get() + ':::' + display
-            sendall(client_socket, msg.encode())
+            sendall(client_socket, msg.encode() + sign(text.encode()))
    
     update_listbox(display)
 
