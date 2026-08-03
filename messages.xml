@@ -2,4 +2,6 @@
 <?xml version="1.0"?><messages><message><text>test!</text><user>ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAINH3usLlJV1vJSy0iXxAU3HKBngtBaeeEPDcIYwbsb7T aidan@debian
 </user><channel>general</channel></message><message><text>test 2</text><user>ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAINH3usLlJV1vJSy0iXxAU3HKBngtBaeeEPDcIYwbsb7T aidan@debian
 </user><channel>general</channel></message><message><text>i cant see your messages. for some reason, you cannot connect to me.</text><user>ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAINH3usLlJV1vJSy0iXxAU3HKBngtBaeeEPDcIYwbsb7T aidan@debian
+</user><channel>general</channel></message><message><user>ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIH/g6Oh+QSe2EOl2kFV1ogjUN31wiZpMusRGiOjQ+3IB egao1@hot-chocolate.local
+</user><text>lets hope this works!</text><channel>general</channel></message><message><text>Yeah!!!!</text><user>ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAINH3usLlJV1vJSy0iXxAU3HKBngtBaeeEPDcIYwbsb7T aidan@debian
 </user><channel>general</channel></message></messages>

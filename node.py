@@ -160,9 +160,11 @@ def recvall(this_socket, chunk_size=1024):
 # list of all server sockets
 list_lock_all_servers = threading.Lock()
 dict_lock_servers = threading.Lock()
+dict_lock_ciphers = threading.Lock()
 
 all_servers = []
 servers = dict()
+ciphers = dict()
 
 # process for each client
 def clientHandler(communication_socket, address):
@@ -297,9 +299,9 @@ def clientHandler(communication_socket, address):
                 # add message
                 if command in [b'general', b'spam', b'casual']:
                     # msg = channel.get() + ':::' + self_authentication_public_key_string + ':::' + text + ':::' + signature
-                    sender_public_key = content.split(b':::')[0].decode()
-                    signature = content.split(b':::')[-1]
-                    content = b':::'.join(content.split(b':::')[1:-1])
+                    sender_public_key = cipher.decrypt(content.split(b':::')[0].decode())
+                    signature = cipher.decrypt(content.split(b':::')[-1])
+                    content = cipher.decrypt(b':::'.join(content.split(b':::')[1:-1]))
                     
                     print("Content:", content, "\nSender Public Key", sender_public_key)
 
@@ -329,6 +331,9 @@ def clientHandler(communication_socket, address):
         with list_lock_all_servers:
             if address in all_servers:
                 all_servers.remove(address)
+        with dict_lock_ciphers:
+            if address in ciphers.keys():
+                del ciphers[address]
         print(all_servers, servers)
 
 # listen for clients
@@ -435,6 +440,8 @@ def create_sender(address, server_public_key):
         print(servers)
         with dict_lock_servers:
             servers[address] = client_socket
+        with dict_lock_ciphers:
+            servers[address] = cipher
         print(servers)
 
     except Exception as e:
@@ -448,6 +455,9 @@ def create_sender(address, server_public_key):
                 del servers[address]
         with list_lock_all_servers:
             all_servers.remove(address)
+        with dict_lock_ciphers:
+            if address in ciphers.keys():
+                del ciphers[address]
         print(all_servers, servers)
         client_socket.close()
 
@@ -644,7 +654,6 @@ def send_message():
         with open('messages.xml', 'w') as f:
             f.write(str(bs))
 
-    msg = channel.get() + ':::' + self_authentication_public_key_string + ':::' + text + ':::'
     display = self_hostname + ': ' + text
 
     print('---SENDING MESSAGE TO ALL SERVERS---')
@@ -652,7 +661,10 @@ def send_message():
         for address, client_socket in servers.items():
             print('ADDRESS:', address)
 
-            sendall(client_socket, msg.encode() + sign(text.encode()))
+            # encrypt and sign message
+            cipher = ciphers[address]
+            msg = channel.get() + ':::' + cipher.encrypt(self_authentication_public_key_string) + ':::' + cipher.encrypt(text) + ':::'
+            sendall(client_socket, msg.encode() + cipher.encrypt(sign(text.encode())))
    
     update_listbox(display)
 
