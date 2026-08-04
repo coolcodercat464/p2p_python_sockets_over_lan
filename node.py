@@ -386,19 +386,22 @@ def spawn_senders():
     print('SPAWNING SENDERS TO:')
     for address, key in data.items():
         print('ADDRESS:', address)
-        with list_lock_all_servers:
-            print(servers)
-            if address not in all_servers:
-                with dict_lock_initiated_widgets:
-                    text = address + ' (' + parse_user_key(key) + ')'
-                    widget = tk.Label(trusted_list, text=text, wraplength=180, bg='yellow')
-                    widget.grid(padx=10, pady=10)
-                    reset = tk.Button(trusted_list, text='R', command=lambda: create_sender(address, key, widget, True))
-                    reset.grid(padx=10, pady=10)
-                    initiated_widgets[address] = widget
-                server = threading.Thread(target=create_sender, args=(address, key, widget, True))
-                server.start()
-                all_servers.append(address)
+        add_sender(address, key, True)
+
+def add_sender(address, key, trusted):
+    with list_lock_all_servers:
+        print(servers)
+        if address not in all_servers:
+            with dict_lock_initiated_widgets:
+                text = address + ' (' + parse_user_key(key) + ')'
+                widget = tk.Label(trusted_list, text=text, wraplength=180, bg='yellow')
+                widget.grid(padx=10, pady=10)
+                reset = tk.Button(trusted_list, text='R', command=lambda: add_sender(address, key, widget, trusted))
+                reset.grid(padx=10, pady=10)
+                initiated_widgets[address] = widget
+            server = threading.Thread(target=create_sender, args=(address, key, widget, trusted))
+            server.start()
+            all_servers.append(address)
 
 def create_sender(address, server_public_key, widget, trusted):
     try:
