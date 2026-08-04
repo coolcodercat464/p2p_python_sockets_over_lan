@@ -383,7 +383,7 @@ def listen():
 # remove socket from lists/dictionaries after connection is closed
 def cleanup(address):
     try:
-        print("CLEANUP CONNECTION FOR", a)
+        print("CLEANUP CONNECTION FOR", address)
         with dict_lock_servers:
             if address in servers.keys():
                 servers[address].close()
