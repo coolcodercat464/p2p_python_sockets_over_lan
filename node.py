@@ -331,7 +331,7 @@ def clientHandler(communication_socket, address):
                                     print('ADDRESS:', a)
                         
                                     # encrypt and sign message
-                                    byteKey2 = ciphers[address]
+                                    byteKey2 = ciphers[a]
                                     cipher2 = GCM(byteKey2)
                         
                                     msg = channel.encode() + ':::'.encode() + cipher2.encrypt(sender_public_key) + ':::'.encode() + cipher2.encrypt(content) + ':::'.encode() + time.encode() + ':::'.encode() + signature
