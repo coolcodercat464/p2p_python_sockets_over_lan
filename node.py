@@ -320,14 +320,14 @@ def clientHandler(communication_socket, address):
 
                             print('---SENDING MESSAGE TO ALL SERVERS---')
                             with dict_lock_servers:
-                                for address, client_socket in servers.items():
-                                    print('ADDRESS:', address)
+                                for a, client_socket in servers.items():
+                                    print('ADDRESS:', a)
                         
                                     # encrypt and sign message
-                                    byteKey = ciphers[address]
-                                    cipher = GCM(byteKey)
+                                    byteKey2 = ciphers[address]
+                                    cipher2 = GCM(byteKey2)
                         
-                                    msg = channel.encode() + ':::'.encode() + cipher.encrypt(sender_public_key) + ':::'.encode() + cipher.encrypt(text) + ':::'.encode() + time.encode() + ':::'.encode() + signature
+                                    msg = channel.encode() + ':::'.encode() + cipher2.encrypt(sender_public_key) + ':::'.encode() + cipher2.encrypt(content) + ':::'.encode() + time.encode() + ':::'.encode() + signature
                                     sendall(client_socket, msg)
 
                         ## TODO - resend (gossip protocol) and discard duplicate messages
@@ -351,7 +351,7 @@ def listen():
     listener = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
 
     listener.bind(('0.0.0.0', 65432))
-    listener.listen(5)
+    listener.listen(15)
 
     print("Server set up :D")
    
