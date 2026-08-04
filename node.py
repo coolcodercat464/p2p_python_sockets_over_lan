@@ -1035,7 +1035,7 @@ def create_resource():
             messagebox.showinfo("Error!", "Text empty!")
             return
         
-        label = label_entry.get("1.0", "end-1c")
+        label = label_entry.get()
         if label.strip() == '': 
             messagebox.showinfo("Error!", "Label empty!")
             return
@@ -1051,7 +1051,7 @@ def create_resource():
 # query network for resource given label
 def query_resource():
     try:
-        label = label_entry.get("1.0", "end-1c")
+        label = label_entry.get()
         if label.strip() == '': 
             messagebox.showinfo("Error!", "Label empty!")
             return
