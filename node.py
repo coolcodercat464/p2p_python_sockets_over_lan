@@ -717,10 +717,10 @@ def message_exists(text, user, channel, time):
         b_message = Bs_data.find_all("message")
 
         for msg in b_message:
-            if msg.find('time').string.strip() == time.strip():
-                if msg.find('user').string.strip() == user.strip():
-                    if msg.find('text').string.strip() == text.strip():
-                        if msg.find('channel').string.strip() == channel.strip():
+            if msg.find('time').string != None and msg.find('time').string.strip() == time.strip():
+                if msg.find('user').string != None and msg.find('user').string.strip() == user.strip():
+                    if msg.find('text').string != None and msg.find('text').string.strip() == text.strip():
+                        if msg.find('channel').string != None and msg.find('channel').string.strip() == channel.strip():
                             return True
      
         return False
@@ -825,6 +825,8 @@ def send_message():
     try:
         # clear messages list 
         text = send_text.get("1.0", "end-1c")
+
+        if text.strip() == '': return
 
         # add to database
         time = str(datetime.datetime.now())
