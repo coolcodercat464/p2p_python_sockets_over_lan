@@ -717,10 +717,10 @@ def message_exists(text, user, channel, time):
         b_message = Bs_data.find_all("message")
 
         for msg in b_message:
-            if msg.find('time').string != None and msg.find('time').string.strip() == time.strip():
-                if msg.find('user').string != None and msg.find('user').string.strip() == user.strip():
-                    if msg.find('text').string != None and msg.find('text').string.strip() == text.strip():
-                        if msg.find('channel').string != None and msg.find('channel').string.strip() == channel.strip():
+            if msg.find('time').string == None or msg.find('time').string.strip() == time.strip():
+                if msg.find('user').string == None or msg.find('user').string.strip() == user.strip():
+                    if msg.find('text').string == None or msg.find('text').string.strip() == text.strip():
+                        if msg.find('channel').string == None or msg.find('channel').string.strip() == channel.strip():
                             return True
      
         return False
@@ -870,11 +870,11 @@ frame1.grid(padx=10, pady=10)
 
 tk.Label(frame1, text='P2P LAN App', font=("Arial", 25)).grid(row=0, column=0, columnspan=2)
 
-chat = tk.Frame(frame1, height=200, width=250)
+chat = tk.Frame(frame1, height=300, width=250)
 chat.grid(row=1, column=0, columnspan=1)
 chat.grid_propagate(0)
 
-messages = tk.Frame(frame1, height=200, width=250)
+messages = tk.Frame(frame1, height=300, width=250)
 messages.grid(row=1, column=1, columnspan=1)
 messages.grid_propagate(0)
 
