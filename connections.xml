@@ -1,7 +1,4 @@
-<?xml version="1.0"?>
+<?xml version="1.0" encoding="utf-8"?>
 <connections>
-	<connection>
-		<address>192.168.0.231</address>
-		<key>ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIH/g6Oh+QSe2EOl2kFV1ogjUN31wiZpMusRGiOjQ+3IB egao1@hot-chocolate.local</key>
-	</connection>
-</connections>
+<connection><address>192.168.0.231</address><key>ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIH/g6Oh+QSe2EOl2kFV1ogjUN31wiZpMusRGiOjQ+3IB egao1@hot-chocolate.local
+</key></connection></connections>

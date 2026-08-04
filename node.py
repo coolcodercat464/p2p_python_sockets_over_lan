@@ -16,11 +16,10 @@ import secrets
 import base64
 import hashlib
 
+import datetime
+
 # database and authentication
 from bs4 import BeautifulSoup # pip install beautifulsoup4
-#from getmac import get_mac_address as gma
-from argon2 import PasswordHasher # pip install argon2-cffi
-from argon2.exceptions import VerifyMismatchError
 import json
 
 # gui
@@ -58,14 +57,6 @@ class GCM:
         except ValueError:
             print("Decryption failed: Key incorrect or message tampered with")
             return False
-
-# verify login password using argon 2 hash
-def verify_password(hashed, password):
-    try:
-        PasswordHasher().verify(hashed, password)
-        return True
-    except VerifyMismatchError:
-        return False
 
 ####################
 ## AUTHENTICATION
@@ -310,17 +301,35 @@ def clientHandler(communication_socket, address):
 
                 # add message
                 if command in [b'general', b'spam', b'casual']:
-                    # msg = channel.get().encode() + ':::'.encode() + cipher.encrypt(self_authentication_public_key_string) + ':::'.encode() + cipher.encrypt(text) + ':::'.encode()
-                    # sendall(client_socket, msg + sign(text.encode()))
+                    channel = command.decode()
+                    
                     sender_public_key = cipher.decrypt(content.split(b':::')[0])
+                    
+                    time = b':::'.join(content.split(b':::')[-2])
+                    time = time.decode()
+                    
                     signature = content.split(b':::')[-1]
-                    content = cipher.decrypt(b':::'.join(content.split(b':::')[1:-1]))
+                    
+                    content = cipher.decrypt(b':::'.join(content.split(b':::')[1:-2]))
                     
                     print("Content:", content, "\nSender Public Key", sender_public_key)
 
                     if verify(sender_public_key, signature, content.encode()):
-                        add_message(sender_public_key, content, command.decode())
-                        show_messages()
+                        if not message_exists(content, sender_public_key, channel, time):
+                            add_message(sender_public_key, content, channel, time)
+                            show_messages()
+
+                            print('---SENDING MESSAGE TO ALL SERVERS---')
+                            with dict_lock_servers:
+                                for address, client_socket in servers.items():
+                                    print('ADDRESS:', address)
+                        
+                                    # encrypt and sign message
+                                    byteKey = ciphers[address]
+                                    cipher = GCM(byteKey)
+                        
+                                    msg = channel.encode() + ':::'.encode() + cipher.encrypt(sender_public_key) + ':::'.encode() + cipher.encrypt(text) + ':::'.encode() + time.encode() + ':::'.encode() + signature
+                                    sendall(client_socket, msg)
 
                         ## TODO - resend (gossip protocol) and discard duplicate messages
                     else:
@@ -573,13 +582,13 @@ def read_connections():
         with open('connections.xml') as f:
             data = f.read()
     
-        Bs_data = BeautifulSoup(data, "xml")
-        b_connections = Bs_data.find_all("connections")
-    
-        try:
-            data = {connection.find_all("address")[0].text: connection.find_all("key")[0].text for connection in b_connections}
-        except:
-            data = dict()
+    Bs_data = BeautifulSoup(data, "xml")
+    b_connections = Bs_data.find_all("connections")
+
+    try:
+        data = {connection.find_all("address")[0].text: connection.find_all("key")[0].text for connection in b_connections}
+    except:
+        data = dict()
        
     return data
 
@@ -631,16 +640,35 @@ def read_messages():
         with open('messages.xml') as f:
             data = f.read()
 
-        Bs_data = BeautifulSoup(data, "xml")
-        b_message = Bs_data.find_all("message")
-     
-        data = [{
-                'text': msg.find('text').text,
-                'user': msg.find('user').text,
-                'channel': msg.find('channel').text
-            } for msg in b_message]
+    Bs_data = BeautifulSoup(data, "xml")
+    b_message = Bs_data.find_all("message")
+ 
+    data = [{
+            'text': msg.find('text').text,
+            'user': msg.find('user').text,
+            'channel': msg.find('channel').text
+        } for msg in b_message]
        
     return data
+
+# message exists
+def message_exists(text, user, channel, time):
+    # thread safety
+    with file_lock_messages:
+        with open('messages.xml') as f:
+            data = f.read()
+
+    Bs_data = BeautifulSoup(data, "xml")
+    b_message = Bs_data.find_all("message")
+
+    for msg in b_message:
+        if msg.find('time') == time:
+            if msg.find('user') == user:
+                if msg.find('text') == text:
+                    if msg.find('channel') == channel:
+                        return True
+ 
+    return False
 
 # get hostname (username) from user's public key
 # ssh-rsa ACTUAL_KEY user@hostname
@@ -650,7 +678,7 @@ def parse_user_key(user):
     return user_hostname
 
 # add an entry into messages.xml
-def add_message(user, text, channel):
+def add_message(user, text, channel, time):
     with file_lock_messages:
         with open('messages.xml', 'r') as f:
             bs = BeautifulSoup(f, 'xml')
@@ -665,11 +693,15 @@ def add_message(user, text, channel):
     channel_tag = bs.new_tag("channel")
     channel_tag.string = channel
 
+    time_tag = bs.new_tag("time")
+    time_tag.string = time
+
     # add subtags to msg tag
     msg_tag = bs.new_tag("message")
     msg_tag.append(user_tag)
     msg_tag.append(text_tag)
     msg_tag.append(channel_tag)
+    msg_tag.append(time_tag)
 
     # add msg tag to file
     messages = bs.find("messages")
@@ -717,35 +749,8 @@ def send_message():
     # thread safety
     text = send_text.get("1.0", "end-1c")
 
-    with file_lock_messages:
-        with open('messages.xml') as f:
-            data = f.read()
-
-        bs = BeautifulSoup(data, "xml")
-       
-        # add data
-        text_tag = bs.new_tag("text")
-        text_tag.string = text
-
-        user_tag = bs.new_tag("user")
-        user_tag.string = self_authentication_public_key_string
-
-        channel_tag = bs.new_tag("channel")
-        channel_tag.string = channel.get()
-
-        # add subtags to message tag
-        message_tag = bs.new_tag("message")
-        message_tag.append(text_tag)
-        message_tag.append(user_tag)
-        message_tag.append(channel_tag)
-
-        # add message tag to file
-        messages = bs.find("messages")
-        messages.append(message_tag)
-                                   
-        with open('messages.xml', 'w') as f:
-            f.write(str(bs))
-
+    # add to database
+    add_message(self_authentication_public_key_string, text, channel.get(), datetime.datetime.now())
     display = self_hostname + ': ' + text + '\n'
 
     print('---SENDING MESSAGE TO ALL SERVERS---')
@@ -757,8 +762,8 @@ def send_message():
             byteKey = ciphers[address]
             cipher = GCM(byteKey)
 
-            msg = channel.get().encode() + ':::'.encode() + cipher.encrypt(self_authentication_public_key_string) + ':::'.encode() + cipher.encrypt(text) + ':::'.encode()
-            sendall(client_socket, msg + sign(text.encode()))
+            msg = channel.get().encode() + ':::'.encode() + cipher.encrypt(self_authentication_public_key_string) + ':::'.encode() + cipher.encrypt(text) + ':::'.encode() + datetime.datetime.now().encode() + ':::'.encode() + sign(text.encode())
+            sendall(client_socket, msg)
    
     update_listbox(display)
 
