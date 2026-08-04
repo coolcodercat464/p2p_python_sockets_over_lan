@@ -376,8 +376,13 @@ def clientHandler(communication_socket, address):
                                 # check if you have resource
                                 _, data_by_label = read_resources()
 
-                                if label in data_by_label.keys():
-                                    resources_found = data_by_label[label]
+                                resources_found = []
+                                for l in data_by_label.keys():
+                                    if label in l:
+                                        for r in data_by_label[l]:
+                                            resources_found.append(r)
+
+                                if len(resources_found) > 0:
                                     resources_string = json.dumps(resources_found)
 
                                     t = threading.Thread(target=add_sender_for_resource, args=(sender_ip_address, sender_public_key, False, resources_string))
@@ -406,6 +411,8 @@ def clientHandler(communication_socket, address):
                     with list_resources_lock:
                         for resource in resources_obj:
                             all_resources.append(resource)
+
+                    messagebox.showinfo("Query response!", "Your query has been responded to. Click the 'NEXT' button to see the responses.")
 
     except Exception as e:
         print("ERROR (clientHandler) FOR ADDRESS", address, ":", e)
@@ -1080,7 +1087,7 @@ def query_resource():
                 msg = 'query'.encode() + ':::'.encode() + cipher.encrypt(self_authentication_public_key_string) + ':::'.encode() + cipher.encrypt(self_ip_address) + ':::'.encode() + cipher.encrypt(label) + ':::'.encode() + time.encode() + ':::'.encode() + sign(label.encode() + time.encode())
                 sendall(client_socket, msg)
        
-        messagebox.showinfo("Message sent!", "Your message has been sent.")
+        messagebox.showinfo("Query sent!", "Your query has been sent.")
     except Exception as e:
         print("ERROR (query_resource):", e)
         messagebox.showinfo("Error (query_resource)!", e)
