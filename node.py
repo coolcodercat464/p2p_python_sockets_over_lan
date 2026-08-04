@@ -403,8 +403,8 @@ def cleanup(address):
                 initiated_widgets[address].config(bg='red')
         print("SERVERS:", all_servers)
     except Exception as e:
-        print("ERROR (destroy_widget) FOR ADDRESS", address, ":", e)
-        messagebox.showinfo("Error (destroy_widget) for address " + address, e)
+        print("ERROR (cleanup) FOR ADDRESS", address, ":", e)
+        messagebox.showinfo("Error (cleanup) for address " + address, e)
 
 # remove widget from tkinter display
 def destroy_widget(address):
