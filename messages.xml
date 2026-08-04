@@ -1,1 +1,7 @@
-<?xml version="1.0" encoding="utf-8"?><messages><</messages>
+<?xml version="1.0" encoding="utf-8"?>
+<messages><message><user>ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIAX4qsZykfYwLhWcj9V0gYyX4/iTcnO7Cdoyqn+gpOIJ panda@archlinux
+</user><text>hello lan!</text><channel>general</channel><time>2026-08-04 18:13:51.563530</time></message><message><user>ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIAX4qsZykfYwLhWcj9V0gYyX4/iTcnO7Cdoyqn+gpOIJ panda@archlinux
+</user><text>now the network architecture is:
+
+arch -- debian -- mac -- windows</text><channel>general</channel><time>2026-08-04 18:15:11.205847</time></message><message><user>ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIAX4qsZykfYwLhWcj9V0gYyX4/iTcnO7Cdoyqn+gpOIJ panda@archlinux
+</user><text>this is called linear bus topology</text><channel>general</channel><time>2026-08-04 18:15:44.322346</time></message></messages>

@@ -19,6 +19,7 @@ import hashlib
 # misc
 import datetime
 import builtins
+from collections import deque
 
 # database and authentication
 from bs4 import BeautifulSoup # pip install beautifulsoup4
@@ -167,6 +168,7 @@ def recvall(this_socket, chunk_size=1024):
 
 # list of all server sockets
 list_lock_all_servers = threading.Lock()
+list_lock_all_requests = threading.Lock()
 dict_lock_servers = threading.Lock()
 dict_lock_ciphers = threading.Lock()
 dict_lock_initiated_widgets = threading.Lock()
@@ -174,6 +176,7 @@ dict_lock_untrusted_widgets = threading.Lock()
 dict_lock_untrusted_keys = threading.Lock()
 
 all_servers = []
+all_requests = []
 servers = dict()
 ciphers = dict()
 initiated_widgets = dict()
@@ -317,19 +320,21 @@ def clientHandler(communication_socket, address):
                 content = b':::'.join(splitted[1:])
 
                 # add message
-                if command in [b'general', b'spam', b'casual']:
-                    channel = command.decode()
+                if command == b'message':
+                    # msg = 'message'.encode() + ':::'.encode() + channel.get().encode() + ':::'.encode() + cipher.encrypt(self_authentication_public_key_string) + ':::'.encode() + cipher.encrypt(text) + ':::'.encode() + time.encode() + ':::'.encode() + sign(text.encode() + time.encode())
                     
-                    sender_public_key = cipher.decrypt(content.split(b':::')[0])
+                    channel = content.split(b':::')[0].decode()
+                    
+                    sender_public_key = cipher.decrypt(content.split(b':::')[1])
+
+                    content = cipher.decrypt(b':::'.join(content.split(b':::')[2:-2]))
                     
                     time = content.split(b':::')[-2].decode()
                     
                     signature = content.split(b':::')[-1]
-                    
-                    content = cipher.decrypt(b':::'.join(content.split(b':::')[1:-2]))
 
-                    if verify(sender_public_key, signature, content.encode()):
-                        print(message_exists(content, sender_public_key, channel, time))
+                    if verify(sender_public_key, signature, content.encode() + time.encode()):
+                        # prevent duplicates from blowing up
                         if not message_exists(content, sender_public_key, channel, time):
                             add_message(sender_public_key, content, channel, time)
                             show_messages()
@@ -342,12 +347,65 @@ def clientHandler(communication_socket, address):
                                     # encrypt and sign message
                                     cipher2 = ciphers[a]
                         
-                                    msg = channel.encode() + ':::'.encode() + cipher2.encrypt(sender_public_key) + ':::'.encode() + cipher2.encrypt(content) + ':::'.encode() + time.encode() + ':::'.encode() + signature
+                                    msg = 'message'.encode() + ':::'.encode() + channel.encode() + ':::'.encode() + cipher2.encrypt(sender_public_key) + ':::'.encode() + cipher2.encrypt(content) + ':::'.encode() + time.encode() + ':::'.encode() + signature
                                     sendall(client_socket, msg)
 
-                        ## TODO - resend (gossip protocol) and discard duplicate messages
                     else:
                         print("SIGNATURE INVALID")
+
+                # resources query
+                elif command == b'query':
+                    # msg = 'query'.encode() + ':::'.encode() + cipher.encrypt(self_authentication_public_key_string) + ':::'.encode() + cipher.encrypt(self_ip_address) + ':::'.encode() + cipher.encrypt(label) + ':::'.encode() + time.encode() + ':::'.encode() + sign(label.encode() + time.encode())
+
+                    sender_public_key = cipher.decrypt(content.split(b':::')[0])
+                    
+                    sender_ip_address = cipher.decrypt(content.split(b':::')[1])
+
+                    label = cipher.decrypt(b':::'.join(content.split(b':::')[2:-2]))
+                    
+                    time = content.split(b':::')[-2].decode()
+                    
+                    signature = content.split(b':::')[-1]
+
+                    if verify(sender_public_key, signature, label.encode() + time.encode()):
+                        # prevent duplicates from blowing up
+                        with list_lock_all_requests:
+                            if (sender_public_key, label, time) not in all_requests:
+                                all_requests.append((sender_public_key, label, time))
+
+                                # check if you have resource
+                                _, data_by_label = read_resources()
+
+                                if label in data_by_label.keys():
+                                    resources_found = data_by_label[label]
+                                    resources_string = json.dumps(resources_found)
+
+                                    t = threading.Thread(target=add_sender_for_resource, args=(sender_ip_address, sender_public_key, False, resources_string))
+                                    t.start()
+                                else:
+                                    print('---SENDING MESSAGE TO ALL SERVERS---')
+                                    with dict_lock_servers:
+                                        for a, client_socket in servers.items():
+                                            print('ADDRESS:', a)
+                                
+                                            # encrypt and sign message
+                                            cipher2 = ciphers[a]
+
+                                            msg = 'query'.encode() + ':::'.encode() + cipher2.encrypt(sender_public_key) + ':::'.encode() + cipher2.encrypt(sender_ip_address) + ':::'.encode() + cipher2.encrypt(label) + ':::'.encode() + time.encode() + ':::'.encode() + signature
+                                            sendall(client_socket, msg)
+                    else:
+                        print("SIGNATURE INVALID")
+
+                # get response from query
+                elif command == b'response':
+                    # msg = 'response'.encode() + ':::'.encode() + cipher.encrypt(resources_string) + ':::'.encode()
+
+                    resources_string = cipher.decrypt(content)
+                    resources_obj = json.loads(resources_string)
+                    
+                    with list_resources_lock:
+                        for resource in resources_obj:
+                            all_resources.append(resource)
 
     except Exception as e:
         print("ERROR (clientHandler) FOR ADDRESS", address, ":", e)
@@ -467,55 +525,94 @@ def spawn_senders():
         print("ERROR (spawn_senders):", e)
         messagebox.showinfo("Error (spawn_senders)", e)
 
+# gui helper function
+def add_sender_gui(address, key, trusted):
+    # gui stuff
+    if trusted:
+        with dict_lock_initiated_widgets:
+            text = address + ' (' + parse_user_key(key) + ')'
+            
+            child = tk.Frame(trusted_list)
+            child.grid(padx=10, pady=10)
+            
+            widget = tk.Label(child, text=text, wraplength=100, bg='yellow')
+            widget.grid(row=0, column=0, rowspan=2)
+            
+            initiated_widgets[address] = widget
+    else:
+        with dict_lock_untrusted_widgets:
+            text = address + ' (' + parse_user_key(key) + ')'
+            
+            child = tk.Frame(untrusted_list)
+            child.grid(padx=10, pady=10)
+            
+            widget = tk.Label(child, text=text, wraplength=100, bg='yellow')
+            widget.grid(row=0, column=0, rowspan=2)
+            
+            untrusted_widgets[address] = widget
+    
+    reset = tk.Button(child, text='R', command=lambda: add_sender(address, key, trusted))
+    reset.grid(row=0, column=1)
+
+    close = tk.Button(child, text='C', command=lambda: cleanup(address))
+    close.grid(row=0, column=2)
+
+    remove = tk.Button(child, text='X', command=lambda: destroy_widget(address))
+    remove.grid(row=1, column=1)
+
+    trust = tk.Button(child, text='T', command=lambda: toggle_trust(address))
+    trust.grid(row=1, column=2)
+
 # create a single sender socket + widgets + append to servers list
 def add_sender(address, key, trusted):
     try:
         print('ADDING SENDER TO ADDRESS:', address)
-        destroy_widget(address)
-        
+
         with list_lock_all_servers:
             if address not in all_servers:
+                destroy_widget(address)
                 all_servers.append(address)
-
-                # gui stuff
-                if trusted:
-                    with dict_lock_initiated_widgets:
-                        text = address + ' (' + parse_user_key(key) + ')'
-                        
-                        child = tk.Frame(trusted_list)
-                        child.grid(padx=10, pady=10)
-                        
-                        widget = tk.Label(child, text=text, wraplength=100, bg='yellow')
-                        widget.grid(row=0, column=0, rowspan=2)
-                        
-                        initiated_widgets[address] = widget
-                else:
-                    with dict_lock_untrusted_widgets:
-                        text = address + ' (' + parse_user_key(key) + ')'
-                        
-                        child = tk.Frame(untrusted_list)
-                        child.grid(padx=10, pady=10)
-                        
-                        widget = tk.Label(child, text=text, wraplength=100, bg='yellow')
-                        widget.grid(row=0, column=0, rowspan=2)
-                        
-                        untrusted_widgets[address] = widget
-                
-                reset = tk.Button(child, text='R', command=lambda: add_sender(address, key, trusted))
-                reset.grid(row=0, column=1)
-
-                close = tk.Button(child, text='C', command=lambda: cleanup(address))
-                close.grid(row=0, column=2)
-
-                remove = tk.Button(child, text='X', command=lambda: destroy_widget(address))
-                remove.grid(row=1, column=1)
-
-                trust = tk.Button(child, text='T', command=lambda: toggle_trust(address))
-                trust.grid(row=1, column=2)
+                add_sender_gui(address, key, trusted)
 
                 # create the actual socket
                 server = threading.Thread(target=create_sender, args=(address, key, widget, trusted))
                 server.start()
+                
+    except Exception as e:
+        print("ERROR (add_sender) FOR ADDRESS", address, ":", e)
+        messagebox.showinfo("Error (add_sender) for address " + address, e)
+
+# create sender and immediately send resource when connection is ready
+def add_sender_for_resource(address, key, trusted, resources_string):
+    try:
+        print('ADDING SENDER (FOR RESOURCE) TO ADDRESS:', address)
+        
+        with list_lock_all_servers:
+            if address not in all_servers:
+                destroy_widget(address)
+                all_servers.append(address)
+                add_sender_gui(address, key, trusted)
+
+                # create the actual socket
+                client_socket, cipher = create_sender(address, key, widget, trusted)
+
+                msg = 'response'.encode() + ':::'.encode() + cipher.encrypt(resources_string) + ':::'.encode() + sign(resources_string.encode())
+                sendall(client_socket, msg)
+            else:
+                exists = False
+                with dict_lock_servers:
+                    if address in servers.keys():
+                        client_socket = servers[address]
+                        
+                        with dict_lock_ciphers:
+                            if address in ciphers.keys():
+                                cipher = ciphers[address]
+
+                                exists = True
+
+                if exists:
+                    msg = 'response'.encode() + ':::'.encode() + cipher.encrypt(resources_string)
+                    sendall(client_socket, msg)
                 
     except Exception as e:
         print("ERROR (add_sender) FOR ADDRESS", address, ":", e)
@@ -597,6 +694,8 @@ def create_sender(address, server_public_key, widget, trusted):
                     untrusted_widgets[address].config(bg='green')
         print(servers)
 
+        return (client_socket, cipher)
+
     except Exception as e:
         print("ERROR (create_sender) FOR ADDRESS", address, ":", e)
         messagebox.showinfo("Error (create_sender) for address " + address, e)
@@ -613,6 +712,7 @@ def create_sender(address, server_public_key, widget, trusted):
 # thread safety
 file_lock_messages = threading.Lock() # for messages
 file_lock_connections = threading.Lock() # for connections
+file_lock_resources = threading.Lock() # for resources
 
 # reads the connections.xml file
 # <connections><connection><address>...</address> <key>...</key></connection>... </connections>
@@ -705,7 +805,7 @@ def read_messages():
         messagebox.showinfo("Error (read_messages)!", e)
         return dict()
 
-# message exists
+# check whether message exists
 def message_exists(text, user, channel, time):
     try:
         # thread safety
@@ -717,10 +817,10 @@ def message_exists(text, user, channel, time):
         b_message = Bs_data.find_all("message")
 
         for msg in b_message:
-            if msg.find('time').string == None or msg.find('time').string.strip() == time.strip():
-                if msg.find('user').string == None or msg.find('user').string.strip() == user.strip():
-                    if msg.find('text').string == None or msg.find('text').string.strip() == text.strip():
-                        if msg.find('channel').string == None or msg.find('channel').string.strip() == channel.strip():
+            if msg.find('time').text.strip() == time.strip():
+                if msg.find('user').text.strip() == user.strip():
+                    if msg.find('text').text.strip() == text.strip():
+                        if msg.find('channel').text.strip() == channel.strip():
                             return True
      
         return False
@@ -789,14 +889,78 @@ def purge_messages():
 
     show_messages()
 
+# reads the resources.xml file
+# <resources><resource><text>...</text> <label>...</label></resource>... </resources>
+def read_resources():
+    try:
+        # thread safety
+        with file_lock_resources:
+            with open('resources.xml') as f:
+                data = f.read()
+
+        Bs_data = BeautifulSoup(data, "xml")
+        b_labels = Bs_data.find_all("label")
+     
+        data = []
+
+        data_by_label = dict()
+
+        for label in b_labels:
+            parent = label.parent
+            details = {
+                'text': parent.find('text').text,
+                'label': label.text
+            }
+            if label.text in data_by_label.keys():
+                data_by_label[label.text].append(details)
+            else:
+                data_by_label[label.text] = [details]
+            data.append(details)
+           
+        return data, data_by_label
+    except Exception as e:
+        print("ERROR (read_resources):", e)
+        messagebox.showinfo("Error (read_resources)!", e)
+        return dict()
+
+# add an entry into resources.xml
+def add_resource(text, label):
+    try:
+        with file_lock_resources:
+            with open('resources.xml', 'r') as f:
+                bs = BeautifulSoup(f, 'xml')
+
+        # add data
+        text_tag = bs.new_tag("text")
+        text_tag.string = text
+
+        label_tag = bs.new_tag("label")
+        label_tag.string = label
+        
+        # add subtags to msg tag
+        res_tag = bs.new_tag("resource")
+        res_tag.append(text_tag)
+        res_tag.append(label_tag)
+
+        # add msg tag to file
+        resources = bs.find("resources")
+        resources.append(res_tag)
+
+        ## TODO - add xml data encryption
+
+        with file_lock_resources:
+            with open('resources.xml', 'w') as f:
+                f.write(str(bs))
+    except Exception as e:
+        print("ERROR (add_resource):", e)
+        messagebox.showinfo("Error (add_resource)!", e)
+
 ####################
 ## MESSAGE HANDLING
 ####################
 
 # show all messages in listbox
 def show_messages(event=None):
-    global messages_list
-
     try:
         # database elements
         data = read_messages()
@@ -816,8 +980,6 @@ def show_messages(event=None):
 
 # update gui of messages
 def update_listbox(display):
-    global messages_list
-
     try:
         messages_list.config(state=tk.NORMAL) 
         messages_list.insert(tk.END, display)
@@ -828,13 +990,11 @@ def update_listbox(display):
 
 # add a message to the database from server directly
 def send_message():
-    global clients
-
     try:
-        # clear messages list 
         text = send_text.get("1.0", "end-1c")
-
-        if text.strip() == '': return
+        if text.strip() == '': 
+            messagebox.showinfo("Error!", "Message empty!")
+            return
 
         # add to database
         time = str(datetime.datetime.now())
@@ -849,7 +1009,7 @@ def send_message():
                 # encrypt and sign message
                 cipher = ciphers[address]
 
-                msg = channel.get().encode() + ':::'.encode() + cipher.encrypt(self_authentication_public_key_string) + ':::'.encode() + cipher.encrypt(text) + ':::'.encode() + time.encode() + ':::'.encode() + sign(text.encode())
+                msg = 'message'.encode() + ':::'.encode() + channel.get().encode() + ':::'.encode() + cipher.encrypt(self_authentication_public_key_string) + ':::'.encode() + cipher.encrypt(text) + ':::'.encode() + time.encode() + ':::'.encode() + sign(text.encode() + time.encode())
                 sendall(client_socket, msg)
        
         update_listbox(display)
@@ -860,8 +1020,81 @@ def send_message():
         messagebox.showinfo("Error (send_message)!", e)
 
 ####################
-## CONNECTION HANDLING
+## RESOURCES HANDLING
 ####################
+
+# thread safety
+list_resources_lock = threading.Lock()
+all_resources = deque()
+
+# get information and add it to resources.xml
+def create_resource():
+    try:
+        text = text_text.get("1.0", "end-1c")
+        if text.strip() == '': 
+            messagebox.showinfo("Error!", "Text empty!")
+            return
+        
+        label = label_entry.get("1.0", "end-1c")
+        if label.strip() == '': 
+            messagebox.showinfo("Error!", "Label empty!")
+            return
+
+        add_resource(text, label)
+
+        messagebox.showinfo("Resource added!", "Your resource has been created.")
+        
+    except Exception as e:
+        print("ERROR (create_resource):", e)
+        messagebox.showinfo("Error (create_resource)!", e)
+    
+# query network for resource given label
+def query_resource():
+    try:
+        label = label_entry.get("1.0", "end-1c")
+        if label.strip() == '': 
+            messagebox.showinfo("Error!", "Label empty!")
+            return
+
+        time = str(datetime.datetime.now())
+        
+        print('---SENDING QUERY TO ALL SERVERS---')
+        with dict_lock_servers:
+            for address, client_socket in servers.items():
+                print('ADDRESS:', address)
+
+                # encrypt and sign message
+                cipher = ciphers[address]
+                self_ip_address = client_socket.getsockname()[0]
+
+                msg = 'query'.encode() + ':::'.encode() + cipher.encrypt(self_authentication_public_key_string) + ':::'.encode() + cipher.encrypt(self_ip_address) + ':::'.encode() + cipher.encrypt(label) + ':::'.encode() + time.encode() + ':::'.encode() + sign(label.encode() + time.encode())
+                sendall(client_socket, msg)
+       
+        update_listbox(display)
+
+        messagebox.showinfo("Message sent!", "Your message has been sent.")
+    except Exception as e:
+        print("ERROR (send_message):", e)
+        messagebox.showinfo("Error (send_message)!", e)
+
+# go through all_resources list and present options to user
+def get_next_resource():
+    try:
+        with list_resources_lock:
+            if len(all_resources) == 0:
+                messagebox.showinfo("Nothing here yet", "Try again later")  
+                return
+            resource = all_resources.popleft()
+
+            # show the resource
+            label_entry.delete(0, tk.END)
+            label_entry.insert(0, resource['label'])
+
+            text_text.delete("1.0", tk.END)
+            text_text.insert("1.0", resource['text'])
+    except Exception as e:
+        print("ERROR (get_next_resource):", e)
+        messagebox.showinfo("Error (get_next_resource)!", e)  
 
 ####################
 ## GUI
@@ -869,7 +1102,7 @@ def send_message():
 
 # tk initialise
 root = tk.Tk()
-root.geometry('550x600')
+root.geometry('550x1000')
 root.title('P2P LAN')
 
 # FRAME ONE - messages and chat
@@ -899,6 +1132,23 @@ clear_but = tk.Button(frame1, text='Purge Chat', command=purge_messages)
 clear_but.grid(row=2, column=2, columnspan=1)
 
 show_messages()
+
+# FRAME THREE - RESOURCE QUERIES
+
+frame3 = tk.Frame(root)
+frame3.grid(padx=10, pady=10)
+
+tk.Label(frame3, text='Resources', font=("Arial", 25)).grid(row=0, column=0, columnspan=3)
+
+label_entry = tk.Entry(frame3)
+label_entry.grid(columnspan=3)
+
+text_text = tk.Text(frame3, width=50, height=10)
+text_text.grid(columnspan=3)
+
+tk.Button(frame3, text='CREATE', command=create_resource).grid(row=3, column=0)
+tk.Button(frame3, text='QUERY', command=query_resource).grid(row=3, column=1)
+tk.Button(frame3, text='NEXT', command=get_next_resource).grid(row=3, column=2)
 
 # FRAME TWO - CONNECTIONS MANAGER
 frame2 = tk.Frame(root)
