@@ -624,7 +624,7 @@ def read_connections():
                 data = f.read()
         
         Bs_data = BeautifulSoup(data, "xml")
-        b_connections = Bs_data.find_all("connections")
+        b_connections = Bs_data.find_all("connection")
         
         data = {connection.find_all("address")[0].text: connection.find_all("key")[0].text for connection in b_connections}
     except Exception as e:
@@ -904,7 +904,7 @@ frame2.grid(padx=10, pady=10)
 
 tk.Label(frame2, text='Manage Connections', font=("Arial", 25)).grid(row=0, column=0, columnspan=2)
 
-trusted = tk.Frame(frame2, height=300, width=250)
+trusted = tk.Frame(frame2, height=1000, width=250)
 trusted.grid(row=1, column=0, columnspan=1)
 trusted.grid_propagate(0)
 
@@ -913,17 +913,17 @@ tk.Label(trusted, text='TRUSTED').grid(row=0, column=0)
 spawn_but = tk.Button(trusted, text='Revive Connections', command=spawn_senders)
 spawn_but.grid(row=1, column=0, columnspan=1)
 
-trusted_list = tk.Frame(trusted, height=200, width=200)
+trusted_list = tk.Frame(trusted, height=800, width=200)
 trusted_list.grid(row=2, column=0, columnspan=1)
 trusted_list.grid_propagate(0)
 
-untrusted = tk.Frame(frame2, height=300, width=250)
+untrusted = tk.Frame(frame2, height=1000, width=250)
 untrusted.grid(row=1, column=1, columnspan=1)
 untrusted.grid_propagate(0)
 
 tk.Label(untrusted, text='UNTRUSTED').grid(row=0, column=0)
 
-untrusted_list = tk.Frame(untrusted, height=200, width=200)
+untrusted_list = tk.Frame(untrusted, height=800, width=200)
 untrusted_list.grid(row=1, column=0, columnspan=1)
 untrusted_list.grid_propagate(0)
 
