@@ -305,8 +305,7 @@ def clientHandler(communication_socket, address):
                     
                     sender_public_key = cipher.decrypt(content.split(b':::')[0])
                     
-                    time = b':::'.join(content.split(b':::')[-2])
-                    time = time.decode()
+                    time = content.split(b':::')[-2].decode()
                     
                     signature = content.split(b':::')[-1]
                     
@@ -750,7 +749,8 @@ def send_message():
     text = send_text.get("1.0", "end-1c")
 
     # add to database
-    add_message(self_authentication_public_key_string, text, channel.get(), datetime.datetime.now())
+    time = str(datetime.datetime.now())
+    add_message(self_authentication_public_key_string, text, channel.get(), time)
     display = self_hostname + ': ' + text + '\n'
 
     print('---SENDING MESSAGE TO ALL SERVERS---')
@@ -762,7 +762,7 @@ def send_message():
             byteKey = ciphers[address]
             cipher = GCM(byteKey)
 
-            msg = channel.get().encode() + ':::'.encode() + cipher.encrypt(self_authentication_public_key_string) + ':::'.encode() + cipher.encrypt(text) + ':::'.encode() + datetime.datetime.now().encode() + ':::'.encode() + sign(text.encode())
+            msg = channel.get().encode() + ':::'.encode() + cipher.encrypt(self_authentication_public_key_string) + ':::'.encode() + cipher.encrypt(text) + ':::'.encode() + time.encode() + ':::'.encode() + sign(text.encode())
             sendall(client_socket, msg)
    
     update_listbox(display)
