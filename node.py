@@ -109,40 +109,48 @@ def verify(public_key, signature, message):
    
 # send message + byte size
 def sendall(this_socket, content):
-    print("---Sending Information---")
-    byte_size = str(len(content))
-    msg = byte_size + ' '
+    try:
+        print("---Sending Information---")
+        byte_size = str(len(content))
+        msg = byte_size + ' '
 
-    print(msg, content)
-    this_socket.sendall(msg.encode() + content)
+        print(msg, content)
+        this_socket.sendall(msg.encode() + content)
+    except Exception as e:
+        print("ERROR (clientHandler) FOR ADDRESS", this_socket.getpeername()[0], ":", e)
+        messagebox.showinfo("Error (clientHandler) for address " + this_socket.getpeername()[0], e)
 
 # receive all (no matter byte size)
 def recvall(this_socket, chunk_size=1024):
-    print("---Waiting for Message---")
-    first_chunk = this_socket.recv(chunk_size)
-    # connection terminated
-    if not first_chunk:
-        return False
+    try:
+        print("---Waiting for Message---")
+        first_chunk = this_socket.recv(chunk_size)
+        # connection terminated
+        if not first_chunk:
+            return False
 
-    space_enc = ' '.encode()
-    splitted = first_chunk.split(space_enc)
-    byte_size = splitted[0]
-    everything_else = space_enc.join(splitted[1:])
+        space_enc = ' '.encode()
+        splitted = first_chunk.split(space_enc)
+        byte_size = splitted[0]
+        everything_else = space_enc.join(splitted[1:])
 
-    if len(everything_else) == int(byte_size):
-        return everything_else
-    else:
-        all_chunks = everything_else
-        byte_size -= chunk_size
-        while byte_size > 0:
-            next_chunk = this_socket.recv(chunk_size)
-            # connection terminated
-            if not next_chunk:
-                return False
-            all_chunks += next_chunk
+        if len(everything_else) == int(byte_size):
+            return everything_else
+        else:
+            all_chunks = everything_else
             byte_size -= chunk_size
+            while byte_size > 0:
+                next_chunk = this_socket.recv(chunk_size)
+                # connection terminated
+                if not next_chunk:
+                    return False
+                all_chunks += next_chunk
+                byte_size -= chunk_size
 
-        return all_chunks
+            return all_chunks
+    except Exception as e:
+        print("ERROR (clientHandler) FOR ADDRESS", this_socket.getpeername()[0], ":", e)
+        messagebox.showinfo("Error (clientHandler) for address " + this_socket.getpeername()[0], e)
 
 ####################
 ## LISTENER
@@ -199,7 +207,7 @@ def clientHandler(communication_socket, address):
         while not (authenticated_self and authenticated_client):
             # take in new messages
             message = get_message()
-            if not message: return
+            if not message: raise("Client Disconnected")
 
             # split into command and content
             splitted = message.split(b':::')
@@ -235,7 +243,7 @@ def clientHandler(communication_socket, address):
                             authenticated_client = True
                         else:
                             sendall(communication_socket, 'invalid'.encode())
-                            return
+                            raise("Authentication failed")
        
         # authentication complete. create bidirectional connection
         data = read_connections()
@@ -255,7 +263,7 @@ def clientHandler(communication_socket, address):
         while not encrypted:
             # take in new messages
             message = get_message()
-            if not message: return
+            if not message: raise("Client Disconnected")
 
             # split into command and content
             splitted = message.split(b':::')
@@ -290,7 +298,7 @@ def clientHandler(communication_socket, address):
         while True:
             # take in new messages
             message = get_message()
-            if not message: return
+            if not message: raise("Client Disconnected")
 
             # split into command and content
             splitted = message.split(b':::')
@@ -310,10 +318,9 @@ def clientHandler(communication_socket, address):
                     signature = content.split(b':::')[-1]
                     
                     content = cipher.decrypt(b':::'.join(content.split(b':::')[1:-2]))
-                    
-                    print("Content:", content, "\nSender Public Key", sender_public_key)
 
                     if verify(sender_public_key, signature, content.encode()):
+                        print(message_exists(content, sender_public_key, channel, time))
                         if not message_exists(content, sender_public_key, channel, time):
                             add_message(sender_public_key, content, channel, time)
                             show_messages()
@@ -335,8 +342,8 @@ def clientHandler(communication_socket, address):
                         print("SIGNATURE INVALID")
 
     except Exception as e:
-        print('---ERROR ERROR FOR CLIENT', address, '---')
-        print(e)
+        print("ERROR (clientHandler) FOR ADDRESS", address, ":", e)
+        messagebox.showinfo("Error (clientHandler) for address " + address, e)
 
     finally:
         print('---CLOSING CONNECTION TO CLIENT', address, '---')
@@ -349,20 +356,25 @@ def listen():
 
     # set up server
     listener = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+    listener.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
 
     listener.bind(('0.0.0.0', 65432))
-    listener.listen(15)
+    listener.listen(50)
 
     print("Server set up :D")
    
     while True:
-        communication_socket, address = listener.accept()
+        try:
+            communication_socket, address = listener.accept()
 
-        print("CONNECTION DETECTED FROM:", address)
+            print("CONNECTION DETECTED FROM:", address)
 
-        # make new thread for each client
-        client = threading.Thread(target=clientHandler, args=(communication_socket, address,))
-        client.start()
+            # make new thread for each client
+            client = threading.Thread(target=clientHandler, args=(communication_socket, address,))
+            client.start()
+        except Exception as e:
+            print("LISTENER ERROR:", e)
+            messagebox.showinfo("Error (listen)!", e)
 
 ####################
 ## GENERAL CONNECTIONS
@@ -370,53 +382,66 @@ def listen():
 
 # remove socket from lists/dictionaries after connection is closed
 def cleanup(address):
-    print("CLEANUP CONNECTION")
-    with dict_lock_servers:
-        if address in servers.keys():
-            servers[address].close()
-            del servers[address]
-    with list_lock_all_servers:
-        if address in all_servers:
-            all_servers.remove(address)
-    with dict_lock_ciphers:
-        if address in ciphers.keys():
-            del ciphers[address]
+    try:
+        print("CLEANUP CONNECTION FOR", a)
+        with dict_lock_servers:
+            if address in servers.keys():
+                servers[address].close()
+                del servers[address]
+        with list_lock_all_servers:
+            if address in all_servers:
+                all_servers.remove(address)
+        with dict_lock_ciphers:
+            if address in ciphers.keys():
+                del ciphers[address]
 
-    with dict_lock_untrusted_widgets:
-        if address in untrusted_widgets:
-            untrusted_widgets[address].config(bg='red')
-    with dict_lock_initiated_widgets:
-        if address in initiated_widgets:
-            initiated_widgets[address].config(bg='red')
+        with dict_lock_untrusted_widgets:
+            if address in untrusted_widgets:
+                untrusted_widgets[address].config(bg='red')
+        with dict_lock_initiated_widgets:
+            if address in initiated_widgets:
+                initiated_widgets[address].config(bg='red')
+        print("SERVERS:", all_servers)
+    except Exception as e:
+        print("ERROR (destroy_widget) FOR ADDRESS", address, ":", e)
+        messagebox.showinfo("Error (destroy_widget) for address " + address, e)
 
 # remove widget from tkinter display
 def destroy_widget(address):
-    with list_lock_all_servers:
-        if address not in all_servers:
-            with dict_lock_untrusted_widgets:
-                if address in untrusted_widgets:
-                    untrusted_widgets[address].master.destroy()
-                    del untrusted_widgets[address]
-            with dict_lock_initiated_widgets:
-                if address in initiated_widgets:
-                    initiated_widgets[address].master.destroy()
-                    del initiated_widgets[address]
+    try:
+        with list_lock_all_servers:
+            if address not in all_servers:
+                with dict_lock_untrusted_widgets:
+                    if address in untrusted_widgets:
+                        untrusted_widgets[address].master.destroy()
+                        del untrusted_widgets[address]
+                with dict_lock_initiated_widgets:
+                    if address in initiated_widgets:
+                        initiated_widgets[address].master.destroy()
+                        del initiated_widgets[address]
+    except Exception as e:
+        print("ERROR (destroy_widget) FOR ADDRESS", address, ":", e)
+        messagebox.showinfo("Error (destroy_widget) for address " + address, e)
 
 # toggle trust
 def toggle_trust(address):
-    data = read_connections()
-    
-    if address in data.keys():
-        # untrust address
-        remove_connection(address)
-        messagebox.showinfo("Untrusted!", "This address has been removed from the trusted list (connections.xml).")
-    else:
-        # trust address
-        with dict_lock_untrusted_keys:
-            if address in untrusted_keys.keys():
-                key = untrusted_keys[address]
-                add_connection(address, key)
-                messagebox.showinfo("Trusted!", "This address has been added to the trusted list (connections.xml).")
+    try:
+        data = read_connections()
+        
+        if address in data.keys():
+            # untrust address
+            remove_connection(address)
+            messagebox.showinfo("Untrusted!", "This address has been removed from the trusted list (connections.xml).")
+        else:
+            # trust address
+            with dict_lock_untrusted_keys:
+                if address in untrusted_keys.keys():
+                    key = untrusted_keys[address]
+                    add_connection(address, key)
+                    messagebox.showinfo("Trusted!", "This address has been added to the trusted list (connections.xml).")
+    except Exception as e:
+        print("ERROR (toggle_trust) FOR ADDRESS", address, ":", e)
+        messagebox.showinfo("Error (toggle_trust) for address " + address, e)
 
 ####################
 ## SENDER
@@ -424,65 +449,73 @@ def toggle_trust(address):
 
 # sending socket to all trusted peers
 def spawn_senders():
-    data = read_connections()
+    try:
+        data = read_connections()
 
-    print('SPAWNING SENDERS TO:')
-    for address, key in data.items():
-        print('ADDRESS:', address)
-        add_sender(address, key, True)
+        print('SPAWNING SENDERS TO:')
+        for address, key in data.items():
+            add_sender(address, key, True)
+    except Exception as e:
+        print("ERROR (spawn_senders):", e)
+        messagebox.showinfo("Error (spawn_senders)", e)
 
 # create a single sender socket + widgets + append to servers list
 def add_sender(address, key, trusted):
-    destroy_widget(address)
-    
-    with list_lock_all_servers:
-        if address not in all_servers:
-            # gui stuff
-            if trusted:
-                with dict_lock_initiated_widgets:
-                    text = address + ' (' + parse_user_key(key) + ')'
-                    
-                    child = tk.Frame(trusted_list)
-                    child.grid(padx=10, pady=10)
-                    
-                    widget = tk.Label(child, text=text, wraplength=100, bg='yellow')
-                    widget.grid(row=0, column=0, rowspan=2)
-                    
-                    initiated_widgets[address] = widget
-            else:
-                with dict_lock_untrusted_widgets:
-                    text = address + ' (' + parse_user_key(key) + ')'
-                    
-                    child = tk.Frame(untrusted_list)
-                    child.grid(padx=10, pady=10)
-                    
-                    widget = tk.Label(child, text=text, wraplength=100, bg='yellow')
-                    widget.grid(row=0, column=0, rowspan=2)
-                    
-                    untrusted_widgets[address] = widget
-            
-            reset = tk.Button(child, text='R', command=lambda: add_sender(address, key, trusted))
-            reset.grid(row=0, column=1)
+    try:
+        print('ADDING SENDER TO ADDRESS:', address)
+        destroy_widget(address)
+        
+        with list_lock_all_servers:
+            if address not in all_servers:
+                all_servers.append(address)
 
-            close = tk.Button(child, text='C', command=lambda: cleanup(address))
-            close.grid(row=0, column=2)
+                # gui stuff
+                if trusted:
+                    with dict_lock_initiated_widgets:
+                        text = address + ' (' + parse_user_key(key) + ')'
+                        
+                        child = tk.Frame(trusted_list)
+                        child.grid(padx=10, pady=10)
+                        
+                        widget = tk.Label(child, text=text, wraplength=100, bg='yellow')
+                        widget.grid(row=0, column=0, rowspan=2)
+                        
+                        initiated_widgets[address] = widget
+                else:
+                    with dict_lock_untrusted_widgets:
+                        text = address + ' (' + parse_user_key(key) + ')'
+                        
+                        child = tk.Frame(untrusted_list)
+                        child.grid(padx=10, pady=10)
+                        
+                        widget = tk.Label(child, text=text, wraplength=100, bg='yellow')
+                        widget.grid(row=0, column=0, rowspan=2)
+                        
+                        untrusted_widgets[address] = widget
+                
+                reset = tk.Button(child, text='R', command=lambda: add_sender(address, key, trusted))
+                reset.grid(row=0, column=1)
 
-            remove = tk.Button(child, text='X', command=lambda: destroy_widget(address))
-            remove.grid(row=1, column=1)
+                close = tk.Button(child, text='C', command=lambda: cleanup(address))
+                close.grid(row=0, column=2)
 
-            trust = tk.Button(child, text='T', command=lambda: toggle_trust(address))
-            trust.grid(row=1, column=2)
+                remove = tk.Button(child, text='X', command=lambda: destroy_widget(address))
+                remove.grid(row=1, column=1)
 
-            # create the actual socket
-            server = threading.Thread(target=create_sender, args=(address, key, widget, trusted))
-            server.start()
-            all_servers.append(address)
+                trust = tk.Button(child, text='T', command=lambda: toggle_trust(address))
+                trust.grid(row=1, column=2)
+
+                # create the actual socket
+                server = threading.Thread(target=create_sender, args=(address, key, widget, trusted))
+                server.start()
+                
+    except Exception as e:
+        print("ERROR (add_sender) FOR ADDRESS", address, ":", e)
+        messagebox.showinfo("Error (add_sender) for address " + address, e)
 
 # create the sender socket and maintain the connection
 def create_sender(address, server_public_key, widget, trusted):
     try:
-        print('CREATING SENDER FOR', address)
-
         # server parameters
         server = (address, 65432)
 
@@ -503,7 +536,7 @@ def create_sender(address, server_public_key, widget, trusted):
         sendall(client_socket, signature_msg)
 
         response = recvall(client_socket).decode()
-        if response == 'invalid': return
+        if response == 'invalid': raise("Authentication failed")
         challenge = secrets.token_bytes(32)
         challenge_msg = 'sign:::'.encode() + challenge
         sendall(client_socket, challenge_msg)
@@ -511,7 +544,7 @@ def create_sender(address, server_public_key, widget, trusted):
         signature = recvall(client_socket)
         if verify(server_public_key, signature, challenge) == False:
             sendall(client_socket, 'invalid'.encode())
-            return
+            raise("Authentication failed")
         sendall(client_socket, 'valid'.encode())
         okay = recvall(client_socket)
         print(okay)
@@ -557,14 +590,14 @@ def create_sender(address, server_public_key, widget, trusted):
         print(servers)
 
     except Exception as e:
-        print('---ERROR ERROR FOR SENDER TO', address, '---')
-        print(e)
-        
+        print("ERROR (create_sender) FOR ADDRESS", address, ":", e)
+        messagebox.showinfo("Error (create_sender) for address " + address, e)
+
         client_socket.close()
 
         print('---CLOSING CONNECTION TO SERVER', address, '---')
         cleanup(address)
-        
+
 ####################
 ## DATABASE
 ####################
@@ -576,141 +609,170 @@ file_lock_connections = threading.Lock() # for connections
 # reads the connections.xml file
 # <connections><connection><address>...</address> <key>...</key></connection>... </connections>
 def read_connections():
-    # thread safety
-    with file_lock_connections:
-        with open('connections.xml') as f:
-            data = f.read()
-    
-    Bs_data = BeautifulSoup(data, "xml")
-    b_connections = Bs_data.find_all("connections")
-
     try:
+        # thread safety
+        with file_lock_connections:
+            with open('connections.xml') as f:
+                data = f.read()
+        
+        Bs_data = BeautifulSoup(data, "xml")
+        b_connections = Bs_data.find_all("connections")
+        
         data = {connection.find_all("address")[0].text: connection.find_all("key")[0].text for connection in b_connections}
-    except:
+    except Exception as e:
+        print("ERROR:", e)
         data = dict()
        
     return data
 
 # add an entry into connections.xml
 def add_connection(address, key):
-    with file_lock_connections:
-        with open('connections.xml', 'r') as f:
-            bs = BeautifulSoup(f, 'xml')
+    try:
+        with file_lock_connections:
+            with open('connections.xml', 'r') as f:
+                bs = BeautifulSoup(f, 'xml')
 
-    # add data
-    address_tag = bs.new_tag("address")
-    address_tag.string = address
+        # add data
+        address_tag = bs.new_tag("address")
+        address_tag.string = address
 
-    key_tag = bs.new_tag("key")
-    key_tag.string = key
+        key_tag = bs.new_tag("key")
+        key_tag.string = key
 
-    # add subtags to msg tag
-    con_tag = bs.new_tag("connection")
-    con_tag.append(address_tag)
-    con_tag.append(key_tag)
+        # add subtags to msg tag
+        con_tag = bs.new_tag("connection")
+        con_tag.append(address_tag)
+        con_tag.append(key_tag)
 
-    # add con tag to file
-    connections = bs.find("connections")
-    connections.append(con_tag)
+        # add con tag to file
+        connections = bs.find("connections")
+        connections.append(con_tag)
 
-    with file_lock_connections:
-        with open('connections.xml', 'w') as f:
-            f.write(str(bs))
+        with file_lock_connections:
+            with open('connections.xml', 'w') as f:
+                f.write(str(bs))
+    except Exception as e:
+        print("ERROR (add_connection):", e)
+        messagebox.showinfo("Error (add_connection)!", e)
 
 # remove an entry from connections.xml
 def remove_connection(address):
-    with file_lock_connections:
-        with open('connections.xml', 'r') as f:
-            bs = BeautifulSoup(f, 'xml')
+    try:
+        with file_lock_connections:
+            with open('connections.xml', 'r') as f:
+                bs = BeautifulSoup(f, 'xml')
 
-    for item in bs.find_all('connection'):
-        if item.find('address').string == address:
-            item.decompose()
+        for item in bs.find_all('connection'):
+            if item.find('address').string == address:
+                item.decompose()
 
-    with file_lock_connections:
-        with open('connections.xml', 'w') as f:
-            f.write(str(bs))
+        with file_lock_connections:
+            with open('connections.xml', 'w') as f:
+                f.write(str(bs))
+    except Exception as e:
+        print("ERROR (remove_connection):", e)
+        messagebox.showinfo("Error (remove_connection)!", e)
 
 # reads the messages.xml file
 # <messages><message><text>...</text> <user>...</user> <channel>...</channel></message>... </messages>
 def read_messages():
-    # thread safety
-    with file_lock_messages:
-        with open('messages.xml') as f:
-            data = f.read()
+    try:
+        # thread safety
+        with file_lock_messages:
+            with open('messages.xml') as f:
+                data = f.read()
 
-    Bs_data = BeautifulSoup(data, "xml")
-    b_message = Bs_data.find_all("message")
- 
-    data = [{
-            'text': msg.find('text').text,
-            'user': msg.find('user').text,
-            'channel': msg.find('channel').text
-        } for msg in b_message]
-       
-    return data
+        Bs_data = BeautifulSoup(data, "xml")
+        b_message = Bs_data.find_all("message")
+     
+        data = [{
+                'text': msg.find('text').text,
+                'user': msg.find('user').text,
+                'channel': msg.find('channel').text
+            } for msg in b_message]
+           
+        return data
+    except Exception as e:
+        print("ERROR (read_messages):", e)
+        messagebox.showinfo("Error (read_messages)!", e)
+        return dict()
 
 # message exists
 def message_exists(text, user, channel, time):
-    # thread safety
-    with file_lock_messages:
-        with open('messages.xml') as f:
-            data = f.read()
+    try:
+        # thread safety
+        with file_lock_messages:
+            with open('messages.xml') as f:
+                data = f.read()
 
-    Bs_data = BeautifulSoup(data, "xml")
-    b_message = Bs_data.find_all("message")
+        Bs_data = BeautifulSoup(data, "xml")
+        b_message = Bs_data.find_all("message")
 
-    for msg in b_message:
-        if msg.find('time') == time:
-            if msg.find('user') == user:
-                if msg.find('text') == text:
-                    if msg.find('channel') == channel:
-                        return True
- 
-    return False
+        for msg in b_message:
+            print(msg, msg.find('time'), msg.find('user'), msg.find('text'), msg.find('channel'))
+            if msg.find('time').string == time:
+                if msg.find('user').string == user:
+                    if msg.find('text').string == text:
+                        if msg.find('channel').string == channel:
+                            return True
+     
+        return False
+    except Exception as e:
+        print("ERROR (message_exists):", e)
+        messagebox.showinfo("Error (message_exists)!", e)
+        return False
 
 # get hostname (username) from user's public key
 # ssh-rsa ACTUAL_KEY user@hostname
 def parse_user_key(user):
-    username = user.split(' ')[-1]
-    user_hostname = username.split('@')[-1].strip()
-    return user_hostname
+    try:
+        username = user.split(' ')[-1]
+        user_hostname = username.split('@')[-1].strip()
+        return user_hostname
+    except Exception as e:
+        print("ERROR (parse_user_key):", e)
+        messagebox.showinfo("Error (parse_user_key)!", e)
+        return 'ERROR'
 
 # add an entry into messages.xml
 def add_message(user, text, channel, time):
-    with file_lock_messages:
-        with open('messages.xml', 'r') as f:
-            bs = BeautifulSoup(f, 'xml')
+    try:
+        with file_lock_messages:
+            with open('messages.xml', 'r') as f:
+                bs = BeautifulSoup(f, 'xml')
 
-    # add data
-    user_tag = bs.new_tag("user")
-    user_tag.string = user
+        # add data
+        user_tag = bs.new_tag("user")
+        user_tag.string = user
 
-    text_tag = bs.new_tag("text")
-    text_tag.string = text
+        text_tag = bs.new_tag("text")
+        text_tag.string = text
 
-    channel_tag = bs.new_tag("channel")
-    channel_tag.string = channel
+        channel_tag = bs.new_tag("channel")
+        channel_tag.string = channel
 
-    time_tag = bs.new_tag("time")
-    time_tag.string = time
+        time_tag = bs.new_tag("time")
+        time_tag.string = time
 
-    # add subtags to msg tag
-    msg_tag = bs.new_tag("message")
-    msg_tag.append(user_tag)
-    msg_tag.append(text_tag)
-    msg_tag.append(channel_tag)
-    msg_tag.append(time_tag)
+        # add subtags to msg tag
+        msg_tag = bs.new_tag("message")
+        msg_tag.append(user_tag)
+        msg_tag.append(text_tag)
+        msg_tag.append(channel_tag)
+        msg_tag.append(time_tag)
 
-    # add msg tag to file
-    messages = bs.find("messages")
-    messages.append(msg_tag)
+        # add msg tag to file
+        messages = bs.find("messages")
+        messages.append(msg_tag)
 
-    ## TODO - add xml data encryption
+        ## TODO - add xml data encryption
 
-    with file_lock_messages:
-        with open('messages.xml', 'w') as f:
-            f.write(str(bs))
+        with file_lock_messages:
+            with open('messages.xml', 'w') as f:
+                f.write(str(bs))
+    except Exception as e:
+        print("ERROR (add_message):", e)
+        messagebox.showinfo("Error (add_message)!", e)
 
 ####################
 ## MESSAGE HANDLING
@@ -719,55 +781,67 @@ def add_message(user, text, channel, time):
 # show all messages in listbox
 def show_messages(event=None):
     global messages_list
-    
-    # database elements
-    data = read_messages()
 
-    # add database elements to gui
-    messages_list.config(state=tk.NORMAL)
-    messages_list.delete("1.0", tk.END)
-    for each in data:
-        # ensure message is in the correct channel
-        if each['channel'] == channel.get():
-            display = f"{parse_user_key(each['user'])}: {each['text']}\n"
-            messages_list.insert(tk.END, display)
-    messages_list.config(state=tk.DISABLED) 
+    try:
+        # database elements
+        data = read_messages()
+
+        # add database elements to gui
+        messages_list.config(state=tk.NORMAL)
+        messages_list.delete("1.0", tk.END)
+        for each in data:
+            # ensure message is in the correct channel
+            if each['channel'] == channel.get():
+                display = f"{parse_user_key(each['user'])}: {each['text']}\n"
+                messages_list.insert(tk.END, display)
+        messages_list.config(state=tk.DISABLED) 
+    except Exception as e:
+        print("ERROR (show_messages):", e)
+        messagebox.showinfo("Error (show_messages)!", e)
 
 # update gui of messages
 def update_listbox(display):
     global messages_list
 
-    messages_list.config(state=tk.NORMAL) 
-    messages_list.insert(tk.END, display)
-    messages_list.config(state=tk.DISABLED) 
+    try:
+        messages_list.config(state=tk.NORMAL) 
+        messages_list.insert(tk.END, display)
+        messages_list.config(state=tk.DISABLED) 
+    except Exception as e:
+        print("ERROR (update_listbox):", e)
+        messagebox.showinfo("Error (update_listbox)!", e)
 
 # add a message to the database from server directly
 def send_message():
     global clients
 
-    # thread safety
-    text = send_text.get("1.0", "end-1c")
+    try:
+        # clear messages list 
+        text = send_text.get("1.0", "end-1c")
 
-    # add to database
-    time = str(datetime.datetime.now())
-    add_message(self_authentication_public_key_string, text, channel.get(), time)
-    display = self_hostname + ': ' + text + '\n'
+        # add to database
+        time = str(datetime.datetime.now())
+        add_message(self_authentication_public_key_string, text, channel.get(), time)
+        display = self_hostname + ': ' + text + '\n'
 
-    print('---SENDING MESSAGE TO ALL SERVERS---')
-    with dict_lock_servers:
-        for address, client_socket in servers.items():
-            print('ADDRESS:', address)
+        print('---SENDING MESSAGE TO ALL SERVERS---')
+        with dict_lock_servers:
+            for address, client_socket in servers.items():
+                print('ADDRESS:', address)
 
-            # encrypt and sign message
-            byteKey = ciphers[address]
-            cipher = GCM(byteKey)
+                # encrypt and sign message
+                byteKey = ciphers[address]
+                cipher = GCM(byteKey)
 
-            msg = channel.get().encode() + ':::'.encode() + cipher.encrypt(self_authentication_public_key_string) + ':::'.encode() + cipher.encrypt(text) + ':::'.encode() + time.encode() + ':::'.encode() + sign(text.encode())
-            sendall(client_socket, msg)
-   
-    update_listbox(display)
+                msg = channel.get().encode() + ':::'.encode() + cipher.encrypt(self_authentication_public_key_string) + ':::'.encode() + cipher.encrypt(text) + ':::'.encode() + time.encode() + ':::'.encode() + sign(text.encode())
+                sendall(client_socket, msg)
+       
+        update_listbox(display)
 
-    messagebox.showinfo("Message sent!", "Your message has been sent.")
+        messagebox.showinfo("Message sent!", "Your message has been sent.")
+    except Exception as e:
+        print("ERROR (send_message):", e)
+        messagebox.showinfo("Error (send_message)!", e)
 
 ####################
 ## CONNECTION HANDLING
@@ -776,11 +850,6 @@ def send_message():
 ####################
 ## GUI
 ####################
-
-def clear_frame(frame):
-    # Iterate through all direct children of the frame and destroy them
-    for widget in frame.winfo_children():
-        widget.destroy()
 
 # tk initialise
 root = tk.Tk()
