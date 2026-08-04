@@ -163,12 +163,14 @@ dict_lock_servers = threading.Lock()
 dict_lock_ciphers = threading.Lock()
 dict_lock_initiated_widgets = threading.Lock()
 dict_lock_untrusted_widgets = threading.Lock()
+dict_lock_untrusted_keys = threading.Lock()
 
 all_servers = []
 servers = dict()
 ciphers = dict()
 initiated_widgets = dict()
 untrusted_widgets = dict()
+untrusted_keys = dict()
 
 # process for each client
 def clientHandler(communication_socket, address):
@@ -245,7 +247,16 @@ def clientHandler(communication_socket, address):
                             return
        
         # authentication complete. create bidirectional connection
-        add_sender(address, client_authentication_public_key, False)
+        data = read_connections()
+
+        if address in data.keys() and data[address] == client_authentication_public_key:
+            # trusted
+            add_sender(address, client_authentication_public_key, True)
+        else:
+            # untrusted
+            add_sender(address, client_authentication_public_key, False)
+            with dict_lock_untrusted_keys:
+                untrusted_keys[address] = client_authentication_public_key
 
         encrypted = False
         # dh key exchange
@@ -344,26 +355,14 @@ def listen():
         # make new thread for each client
         client = threading.Thread(target=clientHandler, args=(communication_socket, address,))
         client.start()
-       
+
 ####################
-## SENDER
+## GENERAL CONNECTIONS
 ####################
-
-# sending socket to all trusted peers
-def spawn_senders():
-    global trusted_list
-
-    data = read_connections()
-
-    print('SPAWNING SENDERS TO:')
-    for address, key in data.items():
-        print('ADDRESS:', address)
-        add_sender(address, key, True)
 
 # remove socket from lists/dictionaries after connection is closed
 def cleanup(address):
     print("CLEANUP CONNECTION")
-    print(all_servers, servers)
     with dict_lock_servers:
         if address in servers.keys():
             servers[address].close()
@@ -381,7 +380,6 @@ def cleanup(address):
     with dict_lock_initiated_widgets:
         if address in initiated_widgets:
             initiated_widgets[address].config(bg='red')
-    print(all_servers, servers)
 
 # remove widget from tkinter display
 def destroy_widget(address):
@@ -396,12 +394,40 @@ def destroy_widget(address):
                     initiated_widgets[address].master.destroy()
                     del initiated_widgets[address]
 
+# toggle trust
+def toggle_trust(address):
+    data = read_connections()
+    
+    if address in data.keys():
+        # untrust address
+        remove_connection(address)
+        messagebox.showinfo("Untrusted!", "This address has been removed from the trusted list (connections.xml).")
+    else:
+        # trust address
+        with dict_lock_untrusted_keys:
+            if address in untrusted_keys.keys():
+                key = untrusted_keys[address]
+                add_connection(address, key)
+                messagebox.showinfo("Trusted!", "This address has been added to the trusted list (connections.xml).")
+
+####################
+## SENDER
+####################
+
+# sending socket to all trusted peers
+def spawn_senders():
+    data = read_connections()
+
+    print('SPAWNING SENDERS TO:')
+    for address, key in data.items():
+        print('ADDRESS:', address)
+        add_sender(address, key, True)
+
 # create a single sender socket + widgets + append to servers list
 def add_sender(address, key, trusted):
     destroy_widget(address)
     
     with list_lock_all_servers:
-        print(servers)
         if address not in all_servers:
             # gui stuff
             if trusted:
@@ -414,15 +440,6 @@ def add_sender(address, key, trusted):
                     widget = tk.Label(child, text=text, wraplength=100, bg='yellow')
                     widget.grid(row=0, column=0, rowspan=2)
                     
-                    reset = tk.Button(child, text='R', command=lambda: add_sender(address, key, trusted))
-                    reset.grid(row=0, column=1)
-
-                    close = tk.Button(child, text='C', command=lambda: cleanup(address))
-                    close.grid(row=0, column=2)
-
-                    remove = tk.Button(child, text='X', command=lambda: destroy_widget(address))
-                    remove.grid(row=1, column=1)
-                    
                     initiated_widgets[address] = widget
             else:
                 with dict_lock_untrusted_widgets:
@@ -431,19 +448,22 @@ def add_sender(address, key, trusted):
                     child = tk.Frame(untrusted_list)
                     child.grid(padx=10, pady=10)
                     
-                    widget = tk.Label(child, text=text, wraplength=180, bg='yellow')
+                    widget = tk.Label(child, text=text, wraplength=100, bg='yellow')
                     widget.grid(row=0, column=0, rowspan=2)
                     
-                    reset = tk.Button(child, text='R', command=lambda: add_sender(address, key, trusted))
-                    reset.grid(row=0, column=1)
-
-                    close = tk.Button(child, text='C', command=lambda: cleanup(address))
-                    close.grid(row=0, column=2)
-
-                    remove = tk.Button(child, text='X', command=lambda: destroy_widget(address))
-                    remove.grid(row=1, column=1)
-                    
                     untrusted_widgets[address] = widget
+            
+            reset = tk.Button(child, text='R', command=lambda: add_sender(address, key, trusted))
+            reset.grid(row=0, column=1)
+
+            close = tk.Button(child, text='C', command=lambda: cleanup(address))
+            close.grid(row=0, column=2)
+
+            remove = tk.Button(child, text='X', command=lambda: destroy_widget(address))
+            remove.grid(row=1, column=1)
+
+            trust = tk.Button(child, text='T', command=lambda: toggle_trust(address))
+            trust.grid(row=1, column=2)
 
             # create the actual socket
             server = threading.Thread(target=create_sender, args=(address, key, widget, trusted))
@@ -584,6 +604,20 @@ def add_connection(address, key):
     # add con tag to file
     connections = bs.find("connections")
     connections.append(con_tag)
+
+    with file_lock_connections:
+        with open('connections.xml', 'w') as f:
+            f.write(str(bs))
+
+# remove an entry from connections.xml
+def remove_connection(address):
+    with file_lock_connections:
+        with open('connections.xml', 'r') as f:
+            bs = BeautifulSoup(f, 'xml')
+
+    for item in bs.find_all('connection'):
+        if item.find('address').string == address:
+            item.decompose()
 
     with file_lock_connections:
         with open('connections.xml', 'w') as f:
