@@ -717,7 +717,6 @@ def message_exists(text, user, channel, time):
         b_message = Bs_data.find_all("message")
 
         for msg in b_message:
-            print(msg.find('time').string == time, msg.find('user').string == user, msg.find('text').string == text, msg.find('channel').string == channel)
             if msg.find('time').string.strip() == time.strip():
                 if msg.find('user').string.strip() == user.strip():
                     if msg.find('text').string.strip() == text.strip():
