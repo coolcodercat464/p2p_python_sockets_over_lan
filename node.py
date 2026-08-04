@@ -161,13 +161,18 @@ def recvall(this_socket, chunk_size=1024):
 list_lock_all_servers = threading.Lock()
 dict_lock_servers = threading.Lock()
 dict_lock_ciphers = threading.Lock()
+dict_lock_initiated_widgets = threading.Lock()
+dict_lock_untrusted_widgets = threading.Lock()
 
 all_servers = []
 servers = dict()
 ciphers = dict()
+initiated_widgets = dict()
+untrusted_widgets = dict()
 
 # process for each client
 def clientHandler(communication_socket, address):
+    global untrusted_list
     try:
         print('CLIENT HANDLER CREATED FOR ADDRESS', address)
 
@@ -243,7 +248,12 @@ def clientHandler(communication_socket, address):
         with list_lock_all_servers:
             print(servers)
             if address not in all_servers:
-                server = threading.Thread(target=create_sender, args=(address, client_authentication_public_key,))
+                with dict_lock_untrusted_widgets:
+                    text = address + ' (' + parse_user_key(client_authentication_public_key) + ')'
+                    widget = tk.Label(untrusted_list, text=text, wraplength=180, bg='yellow')
+                    widget.grid(padx=10, pady=10)
+                    untrusted_widgets[address] = widget
+                server = threading.Thread(target=create_sender, args=(address, client_authentication_public_key, widget, False))
                 server.start()
                 all_servers.append(address)
 
@@ -364,6 +374,8 @@ def listen():
 
 # sending socket
 def spawn_senders():
+    global trusted_list
+
     data = read_connections()
 
     print('SPAWNING SENDERS TO:')
@@ -372,11 +384,16 @@ def spawn_senders():
         with list_lock_all_servers:
             print(servers)
             if address not in all_servers:
-                server = threading.Thread(target=create_sender, args=(address, key,))
+                with dict_lock_initiated_widgets:
+                    text = address + ' (' + parse_user_key(key) + ')'
+                    widget = tk.Label(trusted_list, text=text, wraplength=180, bg='yellow')
+                    widget.grid(padx=10, pady=10)
+                    initiated_widgets[address] = widget
+                server = threading.Thread(target=create_sender, args=(address, key, widget, True))
                 server.start()
                 all_servers.append(address)
 
-def create_sender(address, server_public_key):
+def create_sender(address, server_public_key, widget, trusted):
     try:
         print('CREATING SENDER FOR', address)
 
@@ -443,6 +460,14 @@ def create_sender(address, server_public_key):
             servers[address] = client_socket
         with dict_lock_ciphers:
             ciphers[address] = byteKey
+        if trusted:
+            with dict_lock_initiated_widgets:
+                if address in initiated_widgets:
+                    initiated_widgets[address].config(bg='green')
+        else:
+            with dict_lock_untrusted_widgets:
+                if address in untrusted_widgets:
+                    untrusted_widgets[address].config(bg='green')
         print(servers)
 
     except Exception as e:
@@ -459,6 +484,15 @@ def create_sender(address, server_public_key):
         with dict_lock_ciphers:
             if address in ciphers.keys():
                 del ciphers[address]
+
+        if trusted:
+            with dict_lock_initiated_widgets:
+                if address in initiated_widgets:
+                    initiated_widgets[address].config(bg='red')
+        else:
+            with dict_lock_untrusted_widgets:
+                if address in untrusted_widgets:
+                    untrusted_widgets[address].config(bg='red')
         print(all_servers, servers)
         client_socket.close()
 
@@ -537,7 +571,7 @@ def read_messages():
 # ssh-rsa ACTUAL_KEY user@hostname
 def parse_user_key(user):
     username = user.split(' ')[-1]
-    user_hostname = username.split('@')[-1]
+    user_hostname = username.split('@')[-1].strip()
     return user_hostname
 
 # add an entry into messages.xml
@@ -573,51 +607,33 @@ def add_message(user, text, channel):
             f.write(str(bs))
 
 ####################
-## MAIN LOGIC
-####################
-
-Thread(target=listen).start()
-Thread(target=spawn_senders).start()
-
-####################
 ## MESSAGE HANDLING
 ####################
 
 # show all messages in listbox
 def show_messages(event=None):
-    global listbox
-
-    # gui elements
-    listbox = tk.Listbox(messages, height = 10,
-                  width = 60,
-                  bg = "white",
-                  activestyle = 'dotbox',
-                  font = "Helvetica",
-                  fg = "black")
-    scrollbar = tk.Scrollbar(messages)
-
+    global messages_list
+    
     # database elements
     data = read_messages()
 
     # add database elements to gui
-    c = 1
+    messages_list.config(state=tk.NORMAL)
+    messages_list.delete("1.0", tk.END)
     for each in data:
         # ensure message is in the correct channel
         if each['channel'] == channel.get():
-            display = f"{parse_user_key(each['user'])}: {each['text']}"
-            listbox.insert(c, display)
-            c += 1
-
-    # display the gui
-    listbox.grid(row=1, column=1, columnspan=5)
-    listbox.config(yscrollcommand = scrollbar.set)
-    scrollbar.config(command = listbox.yview)
+            display = f"{parse_user_key(each['user'])}: {each['text']}\n"
+            messages_list.insert(tk.END, display)
+    messages_list.config(state=tk.DISABLED) 
 
 # update gui of messages
 def update_listbox(display):
-    global listbox
+    global messages_list
 
-    listbox.insert(tk.END, display)
+    messages_list.config(state=tk.NORMAL) 
+    messages_list.insert(tk.END, display)
+    messages_list.config(state=tk.DISABLED) 
 
 # add a message to the database from server directly
 def send_message():
@@ -655,7 +671,7 @@ def send_message():
         with open('messages.xml', 'w') as f:
             f.write(str(bs))
 
-    display = self_hostname + ': ' + text
+    display = self_hostname + ': ' + text + '\n'
 
     print('---SENDING MESSAGE TO ALL SERVERS---')
     with dict_lock_servers:
@@ -674,35 +690,89 @@ def send_message():
     messagebox.showinfo("Message sent!", "Your message has been sent.")
 
 ####################
+## CONNECTION HANDLING
+####################
+
+####################
 ## GUI
 ####################
 
+def clear_frame(frame):
+    # Iterate through all direct children of the frame and destroy them
+    for widget in frame.winfo_children():
+        widget.destroy()
+
 # tk initialise
 root = tk.Tk()
-root.geometry('700x250')
+root.geometry('550x600')
 root.title('P2P LAN')
 
-# messages space
-messages = tk.Frame(root)
-messages.grid()
+# FRAME ONE - messages and chat
+frame1 = tk.Frame(root)
+frame1.grid(padx=10, pady=10)
+
+tk.Label(frame1, text='P2P LAN App', font=("Arial", 25)).grid(row=0, column=0, columnspan=2)
+
+chat = tk.Frame(frame1, height=200, width=250)
+chat.grid(row=1, column=0, columnspan=1)
+chat.grid_propagate(0)
+
+messages = tk.Frame(frame1, height=200, width=250)
+messages.grid(row=1, column=1, columnspan=1)
+messages.grid_propagate(0)
+
+frame1.rowconfigure(0, weight=1)
+frame1.rowconfigure(1, weight=1)
 
 channel = tk.StringVar(root)
 channel.set("general")
 
 options = ["general", "spam", "casual"]
 
-channel_menu = tk.OptionMenu(messages, channel, *options, command=show_messages)
-channel_menu.grid(row=0, column=0, sticky = tk.W)
-spawn_but = tk.Button(messages, text='Revive Connections', command=spawn_senders)
-spawn_but.grid(row=0, column=1, sticky = tk.W)
+send_text = tk.Text(chat, width=25, height=10)
+send_text.grid(row=0, column=0, columnspan=2)
 
-send = tk.Frame(messages)
-send_text = tk.Text(send, width=25, height=10)
-send_but = tk.Button(send, text='Send', command=send_message)
-send_text.grid()
-send_but.grid()
-send.grid(row=1, column=0, columnspan=1)
+send_but = tk.Button(chat, text='Send', command=send_message)
+send_but.grid(row=1, column=0, columnspan=1)
+
+channel_menu = tk.OptionMenu(chat, channel, *options, command=show_messages)
+channel_menu.grid(row=1, column=1, columnspan=1)
+
+messages_list = tk.Text(messages, wrap='word')
+messages_list.place(x=0, y=0, height=200, width=250)
 
 show_messages()
+
+# FRAME TWO - CONNECTIONS MANAGER
+frame2 = tk.Frame(root)
+frame2.grid(padx=10, pady=10)
+
+tk.Label(frame2, text='Manage Connections', font=("Arial", 25)).grid(row=0, column=0, columnspan=2)
+
+trusted = tk.Frame(frame2, height=300, width=250)
+trusted.grid(row=1, column=0, columnspan=1)
+trusted.grid_propagate(0)
+
+tk.Label(trusted, text='TRUSTED').grid(row=0, column=0)
+
+trusted_list = tk.Frame(trusted, height=200, width=200)
+trusted_list.grid(row=1, column=0, columnspan=1)
+trusted_list.grid_propagate(0)
+
+untrusted = tk.Frame(frame2, height=300, width=250)
+untrusted.grid(row=1, column=1, columnspan=1)
+untrusted.grid_propagate(0)
+
+tk.Label(untrusted, text='UNTRUSTED').grid(row=0, column=0)
+
+untrusted_list = tk.Frame(untrusted, height=200, width=200)
+untrusted_list.grid(row=1, column=0, columnspan=1)
+untrusted_list.grid_propagate(0)
+
+frame2.rowconfigure(0, weight=1)
+frame2.rowconfigure(1, weight=1)
+
+Thread(target=listen).start()
+Thread(target=spawn_senders).start()
 
 tk.mainloop()
