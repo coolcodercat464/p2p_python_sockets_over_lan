@@ -16,7 +16,9 @@ import secrets
 import base64
 import hashlib
 
+# misc
 import datetime
+import builtins
 
 # database and authentication
 from bs4 import BeautifulSoup # pip install beautifulsoup4
@@ -25,6 +27,13 @@ import json
 # gui
 import tkinter as tk
 from tkinter import messagebox
+
+# thread-safe print
+print_lock = threading.Lock()
+original_print = builtins.print
+def custom_print(*args):
+    with print_lock: original_print(*args)
+builtins.print = custom_print
 
 ####################
 ## CRYPTOGRAPHY
@@ -207,7 +216,7 @@ def clientHandler(communication_socket, address):
         while not (authenticated_self and authenticated_client):
             # take in new messages
             message = get_message()
-            if not message: raise("Client Disconnected")
+            if not message: raise Exception("Client Disconnected")
 
             # split into command and content
             splitted = message.split(b':::')
@@ -229,7 +238,7 @@ def clientHandler(communication_socket, address):
                     sendall(communication_socket, challenge)
                 elif command == b'invalid':
                     # exit if authentication fails
-                    return
+                    raise Exception("Authentication failed")
                 elif command == b'signed':
                     # ensure we have their public key
                     if client_authentication_public_key == None:
@@ -243,7 +252,7 @@ def clientHandler(communication_socket, address):
                             authenticated_client = True
                         else:
                             sendall(communication_socket, 'invalid'.encode())
-                            raise("Authentication failed")
+                            raise Exception("Authentication failed")
        
         # authentication complete. create bidirectional connection
         data = read_connections()
@@ -263,7 +272,7 @@ def clientHandler(communication_socket, address):
         while not encrypted:
             # take in new messages
             message = get_message()
-            if not message: raise("Client Disconnected")
+            if not message: raise Exception("Client Disconnected")
 
             # split into command and content
             splitted = message.split(b':::')
@@ -298,7 +307,7 @@ def clientHandler(communication_socket, address):
         while True:
             # take in new messages
             message = get_message()
-            if not message: raise("Client Disconnected")
+            if not message: raise Exception("Client Disconnected")
 
             # split into command and content
             splitted = message.split(b':::')
@@ -708,7 +717,7 @@ def message_exists(text, user, channel, time):
         b_message = Bs_data.find_all("message")
 
         for msg in b_message:
-            print(msg, msg.find('time'), msg.find('user'), msg.find('text'), msg.find('channel'))
+            print(msg.find('time').string, time, msg.find('user').string, user, msg.find('text').string, text, msg.find('channel').string, channel)
             if msg.find('time').string == time:
                 if msg.find('user').string == user:
                     if msg.find('text').string == text:
