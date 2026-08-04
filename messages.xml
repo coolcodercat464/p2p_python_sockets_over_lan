@@ -1,18 +1,2 @@
 <?xml version="1.0" encoding="utf-8"?>
-<messages><message><user>ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAINH3usLlJV1vJSy0iXxAU3HKBngtBaeeEPDcIYwbsb7T aidan@debian
-</user><text>hello lan!</text><channel>general</channel><time>2026-08-04 17:04:53.230720</time></message><message><user>ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAINH3usLlJV1vJSy0iXxAU3HKBngtBaeeEPDcIYwbsb7T aidan@debian
-</user><text>this better work now</text><channel>general</channel><time>2026-08-04 17:09:20.843231</time></message><message><user>ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIFUE3IWN8q2aCVUrQAA5n1oKCuO0DPByYLln/LBPJGSa emma@DESKTOP-51SV7T3
-</user><text>YESS!!!! HELLO EVERYBODY</text><channel>general</channel><time>2026-08-04 17:09:33.695330</time></message><message><user>ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIFUE3IWN8q2aCVUrQAA5n1oKCuO0DPByYLln/LBPJGSa emma@DESKTOP-51SV7T3
-</user><text>YESS!!!! HELLO EVERYBODY</text><channel>general</channel><time>2026-08-04 17:09:33.695330</time></message><message><user>ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIFUE3IWN8q2aCVUrQAA5n1oKCuO0DPByYLln/LBPJGSa emma@DESKTOP-51SV7T3
-</user><text>YESS!!!! HELLO EVERYBODY</text><channel>general</channel><time>2026-08-04 17:09:33.695330</time></message><message><user>ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIFUE3IWN8q2aCVUrQAA5n1oKCuO0DPByYLln/LBPJGSa emma@DESKTOP-51SV7T3
-</user><text>is it working now???</text><channel>general</channel><time>2026-08-04 17:14:40.460052</time></message><message><user>ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIFUE3IWN8q2aCVUrQAA5n1oKCuO0DPByYLln/LBPJGSa emma@DESKTOP-51SV7T3
-</user><text>is it working now???</text><channel>general</channel><time>2026-08-04 17:14:40.460052</time></message><message><user>ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIFUE3IWN8q2aCVUrQAA5n1oKCuO0DPByYLln/LBPJGSa emma@DESKTOP-51SV7T3
-</user><text>is it working now???</text><channel>general</channel><time>2026-08-04 17:14:40.460052</time></message><message><user>ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIFUE3IWN8q2aCVUrQAA5n1oKCuO0DPByYLln/LBPJGSa emma@DESKTOP-51SV7T3
-</user><text>is it working now???</text><channel>general</channel><time>2026-08-04 17:14:40.460052</time></message><message><user>ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIH/g6Oh+QSe2EOl2kFV1ogjUN31wiZpMusRGiOjQ+3IB egao1@hot-chocolate.local
-</user><text>hi</text><channel>general</channel><time>2026-08-04 17:20:52.445374</time></message><message><user>ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAINH3usLlJV1vJSy0iXxAU3HKBngtBaeeEPDcIYwbsb7T aidan@debian
-</user><text>is it gonna get messy</text><channel>spam</channel><time>2026-08-04 17:21:05.910364</time></message><message><user>ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIFUE3IWN8q2aCVUrQAA5n1oKCuO0DPByYLln/LBPJGSa emma@DESKTOP-51SV7T3
-</user><text>bet its gonna blow up now</text><channel>spam</channel><time>2026-08-04 17:21:34.508552</time></message><message><user>ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIFUE3IWN8q2aCVUrQAA5n1oKCuO0DPByYLln/LBPJGSa emma@DESKTOP-51SV7T3
-</user><text>bet its gonna blow up now</text><channel>spam</channel><time>2026-08-04 17:21:34.508552</time></message><message><user>ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIFUE3IWN8q2aCVUrQAA5n1oKCuO0DPByYLln/LBPJGSa emma@DESKTOP-51SV7T3
-</user><text>bet its gonna blow up now</text><channel>spam</channel><time>2026-08-04 17:21:34.508552</time></message><message><user>ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIFUE3IWN8q2aCVUrQAA5n1oKCuO0DPByYLln/LBPJGSa emma@DESKTOP-51SV7T3
-</user><text>bet its gonna blow up now</text><channel>spam</channel><time>2026-08-04 17:21:34.508552</time></message><message><user>ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIFUE3IWN8q2aCVUrQAA5n1oKCuO0DPByYLln/LBPJGSa emma@DESKTOP-51SV7T3
-</user><text>why every time i send it?</text><channel>spam</channel><time>2026-08-04 17:25:06.678237</time></message></messages>
+<messages></messages>
