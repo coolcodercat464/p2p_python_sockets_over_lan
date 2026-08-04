@@ -781,6 +781,14 @@ def add_message(user, text, channel, time):
         print("ERROR (add_message):", e)
         messagebox.showinfo("Error (add_message)!", e)
 
+# remove all messages from messages.xml
+def purge_messages():
+    with file_lock_messages:
+        with open('messages.xml', 'w') as f:
+            f.write('<?xml version="1.0" encoding="utf-8"?><messages><</messages>')
+
+    show_messages()
+
 ####################
 ## MESSAGE HANDLING
 ####################
@@ -868,35 +876,27 @@ root.title('P2P LAN')
 frame1 = tk.Frame(root)
 frame1.grid(padx=10, pady=10)
 
-tk.Label(frame1, text='P2P LAN App', font=("Arial", 25)).grid(row=0, column=0, columnspan=2)
-
-chat = tk.Frame(frame1, height=300, width=250)
-chat.grid(row=1, column=0, columnspan=1)
-chat.grid_propagate(0)
-
-messages = tk.Frame(frame1, height=300, width=250)
-messages.grid(row=1, column=1, columnspan=1)
-messages.grid_propagate(0)
-
-frame1.rowconfigure(0, weight=1)
-frame1.rowconfigure(1, weight=1)
+tk.Label(frame1, text='P2P LAN App', font=("Arial", 25)).grid(row=0, column=0, columnspan=3)
 
 channel = tk.StringVar(root)
 channel.set("general")
 
 options = ["general", "spam", "casual"]
 
-send_text = tk.Text(chat, width=25, height=10)
-send_text.grid(row=0, column=0, columnspan=2)
+send_text = tk.Text(frame1, width=25, height=10)
+send_text.grid(row=1, column=0, columnspan=2)
 
-send_but = tk.Button(chat, text='Send', command=send_message)
-send_but.grid(row=1, column=0, columnspan=1)
+send_but = tk.Button(frame1, text='Send', command=send_message)
+send_but.grid(row=2, column=0, columnspan=1)
 
-channel_menu = tk.OptionMenu(chat, channel, *options, command=show_messages)
-channel_menu.grid(row=1, column=1, columnspan=1)
+channel_menu = tk.OptionMenu(frame1, channel, *options, command=show_messages)
+channel_menu.grid(row=2, column=1, columnspan=1)
 
-messages_list = tk.Text(messages, wrap='word')
-messages_list.place(x=0, y=0, height=200, width=250)
+messages_list = tk.Text(frame1, wrap='word', width=25, height=10)
+messages_list.grid(row=1, column=2, columnspan=1)
+
+clear_but = tk.Button(frame1, text='Purge Chat', command=purge_messages)
+clear_but.grid(row=2, column=2, columnspan=1)
 
 show_messages()
 
