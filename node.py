@@ -331,8 +331,7 @@ def clientHandler(communication_socket, address):
                                     print('ADDRESS:', a)
                         
                                     # encrypt and sign message
-                                    byteKey2 = ciphers[a]
-                                    cipher2 = GCM(byteKey2)
+                                    cipher2 = ciphers[a]
                         
                                     msg = channel.encode() + ':::'.encode() + cipher2.encrypt(sender_public_key) + ':::'.encode() + cipher2.encrypt(content) + ':::'.encode() + time.encode() + ':::'.encode() + signature
                                     sendall(client_socket, msg)
@@ -578,7 +577,7 @@ def create_sender(address, server_public_key, widget, trusted):
         with dict_lock_servers:
             servers[address] = client_socket
         with dict_lock_ciphers:
-            ciphers[address] = byteKey
+            ciphers[address] = cipher
         if trusted:
             with dict_lock_initiated_widgets:
                 if address in initiated_widgets:
@@ -830,8 +829,7 @@ def send_message():
                 print('ADDRESS:', address)
 
                 # encrypt and sign message
-                byteKey = ciphers[address]
-                cipher = GCM(byteKey)
+                cipher = ciphers[address]
 
                 msg = channel.get().encode() + ':::'.encode() + cipher.encrypt(self_authentication_public_key_string) + ':::'.encode() + cipher.encrypt(text) + ':::'.encode() + time.encode() + ':::'.encode() + sign(text.encode())
                 sendall(client_socket, msg)
