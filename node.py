@@ -563,6 +563,8 @@ def add_sender_gui(address, key, trusted):
     trust = tk.Button(child, text='T', command=lambda: toggle_trust(address))
     trust.grid(row=1, column=2)
 
+    return widget
+
 # create a single sender socket + widgets + append to servers list
 def add_sender(address, key, trusted):
     try:
@@ -576,7 +578,7 @@ def add_sender(address, key, trusted):
         if continue_logic:
             destroy_widget(address)
             all_servers.append(address)
-            add_sender_gui(address, key, trusted)
+            widget = add_sender_gui(address, key, trusted)
 
             # create the actual socket
             server = threading.Thread(target=create_sender, args=(address, key, widget, trusted))
@@ -591,7 +593,7 @@ def add_sender_for_resource(address, key, trusted, resources_string):
     try:
         print('ADDING SENDER (FOR RESOURCE) TO ADDRESS:', address)
         
-continue_logic = False
+        continue_logic = False
         with list_lock_all_servers:
             if address not in all_servers:
                 continue_logic = True
@@ -599,7 +601,7 @@ continue_logic = False
         if continue_logic:
             destroy_widget(address)
             all_servers.append(address)
-            add_sender_gui(address, key, trusted)
+            widget = add_sender_gui(address, key, trusted)
 
             # create the actual socket
             client_socket, cipher = create_sender(address, key, widget, trusted)
