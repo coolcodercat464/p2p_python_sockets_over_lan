@@ -245,17 +245,7 @@ def clientHandler(communication_socket, address):
                             return
        
         # authentication complete. create bidirectional connection
-        with list_lock_all_servers:
-            print(servers)
-            if address not in all_servers:
-                with dict_lock_untrusted_widgets:
-                    text = address + ' (' + parse_user_key(client_authentication_public_key) + ')'
-                    widget = tk.Label(untrusted_list, text=text, wraplength=180, bg='yellow')
-                    widget.grid(padx=10, pady=10)
-                    untrusted_widgets[address] = widget
-                server = threading.Thread(target=create_sender, args=(address, client_authentication_public_key, widget, False))
-                server.start()
-                all_servers.append(address)
+        add_sender(address, client_authentication_public_key, False)
 
         encrypted = False
         # dh key exchange
@@ -332,25 +322,7 @@ def clientHandler(communication_socket, address):
     finally:
         print('---CLOSING CONNECTION TO CLIENT', address, '---')
         communication_socket.close()
-        print(all_servers, servers)
-        with dict_lock_servers:
-            if address in servers.keys():
-                servers[address].close()
-                del servers[address]
-        with list_lock_all_servers:
-            if address in all_servers:
-                all_servers.remove(address)
-        with dict_lock_ciphers:
-            if address in ciphers.keys():
-                del ciphers[address]
-
-        with dict_lock_untrusted_widgets:
-            if address in untrusted_widgets:
-                untrusted_widgets[address].config(bg='red')
-        with dict_lock_initiated_widgets:
-            if address in initiated_widgets:
-                initiated_widgets[address].config(bg='red')
-        print(all_servers, servers)
+        cleanup(address)
 
 # listen for clients
 def listen():
@@ -377,7 +349,7 @@ def listen():
 ## SENDER
 ####################
 
-# sending socket
+# sending socket to all trusted peers
 def spawn_senders():
     global trusted_list
 
@@ -388,21 +360,97 @@ def spawn_senders():
         print('ADDRESS:', address)
         add_sender(address, key, True)
 
+# remove socket from lists/dictionaries after connection is closed
+def cleanup(address):
+    print("CLEANUP CONNECTION")
+    print(all_servers, servers)
+    with dict_lock_servers:
+        if address in servers.keys():
+            servers[address].close()
+            del servers[address]
+    with list_lock_all_servers:
+        if address in all_servers:
+            all_servers.remove(address)
+    with dict_lock_ciphers:
+        if address in ciphers.keys():
+            del ciphers[address]
+
+    with dict_lock_untrusted_widgets:
+        if address in untrusted_widgets:
+            untrusted_widgets[address].config(bg='red')
+    with dict_lock_initiated_widgets:
+        if address in initiated_widgets:
+            initiated_widgets[address].config(bg='red')
+    print(all_servers, servers)
+
+# remove widget from tkinter display
+def destroy_widget(address):
+    with list_lock_all_servers:
+        if address not in all_servers:
+            with dict_lock_untrusted_widgets:
+                if address in untrusted_widgets:
+                    untrusted_widgets[address].master.destroy()
+                    del untrusted_widgets[address]
+            with dict_lock_initiated_widgets:
+                if address in initiated_widgets:
+                    initiated_widgets[address].master.destroy()
+                    del initiated_widgets[address]
+
+# create a single sender socket + widgets + append to servers list
 def add_sender(address, key, trusted):
+    destroy_widget(address)
+    
     with list_lock_all_servers:
         print(servers)
         if address not in all_servers:
-            with dict_lock_initiated_widgets:
-                text = address + ' (' + parse_user_key(key) + ')'
-                widget = tk.Label(trusted_list, text=text, wraplength=180, bg='yellow')
-                widget.grid(padx=10, pady=10)
-                reset = tk.Button(trusted_list, text='R', command=lambda: add_sender(address, key, widget, trusted))
-                reset.grid(padx=10, pady=10)
-                initiated_widgets[address] = widget
+            # gui stuff
+            if trusted:
+                with dict_lock_initiated_widgets:
+                    text = address + ' (' + parse_user_key(key) + ')'
+                    
+                    child = tk.Frame(trusted_list)
+                    child.grid(padx=10, pady=10)
+                    
+                    widget = tk.Label(child, text=text, wraplength=100, bg='yellow')
+                    widget.grid(row=0, column=0, rowspan=2)
+                    
+                    reset = tk.Button(child, text='R', command=lambda: add_sender(address, key, trusted))
+                    reset.grid(row=0, column=1)
+
+                    close = tk.Button(child, text='C', command=lambda: cleanup(address))
+                    close.grid(row=0, column=2)
+
+                    remove = tk.Button(child, text='X', command=lambda: destroy_widget(address))
+                    remove.grid(row=1, column=1)
+                    
+                    initiated_widgets[address] = widget
+            else:
+                with dict_lock_untrusted_widgets:
+                    text = address + ' (' + parse_user_key(key) + ')'
+                    
+                    child = tk.Frame(untrusted_list)
+                    child.grid(padx=10, pady=10)
+                    
+                    widget = tk.Label(child, text=text, wraplength=180, bg='yellow')
+                    widget.grid(row=0, column=0, rowspan=2)
+                    
+                    reset = tk.Button(child, text='R', command=lambda: add_sender(address, key, trusted))
+                    reset.grid(row=0, column=1)
+
+                    close = tk.Button(child, text='C', command=lambda: cleanup(address))
+                    close.grid(row=0, column=2)
+
+                    remove = tk.Button(child, text='X', command=lambda: destroy_widget(address))
+                    remove.grid(row=1, column=1)
+                    
+                    untrusted_widgets[address] = widget
+
+            # create the actual socket
             server = threading.Thread(target=create_sender, args=(address, key, widget, trusted))
             server.start()
             all_servers.append(address)
 
+# create the sender socket and maintain the connection
 def create_sender(address, server_public_key, widget, trusted):
     try:
         print('CREATING SENDER FOR', address)
@@ -483,29 +531,12 @@ def create_sender(address, server_public_key, widget, trusted):
     except Exception as e:
         print('---ERROR ERROR FOR SENDER TO', address, '---')
         print(e)
-
-        print('---CLOSING CONNECTION TO SERVER', address, '---')
-        print(all_servers, servers)
-        with dict_lock_servers:
-            if address in servers.keys():
-                del servers[address]
-        with list_lock_all_servers:
-            all_servers.remove(address)
-        with dict_lock_ciphers:
-            if address in ciphers.keys():
-                del ciphers[address]
-
-        if trusted:
-            with dict_lock_initiated_widgets:
-                if address in initiated_widgets:
-                    initiated_widgets[address].config(bg='red')
-        else:
-            with dict_lock_untrusted_widgets:
-                if address in untrusted_widgets:
-                    untrusted_widgets[address].config(bg='red')
-        print(all_servers, servers)
+        
         client_socket.close()
 
+        print('---CLOSING CONNECTION TO SERVER', address, '---')
+        cleanup(address)
+        
 ####################
 ## DATABASE
 ####################
@@ -765,8 +796,11 @@ trusted.grid_propagate(0)
 
 tk.Label(trusted, text='TRUSTED').grid(row=0, column=0)
 
+spawn_but = tk.Button(trusted, text='Revive Connections', command=spawn_senders)
+spawn_but.grid(row=1, column=0, columnspan=1)
+
 trusted_list = tk.Frame(trusted, height=200, width=200)
-trusted_list.grid(row=1, column=0, columnspan=1)
+trusted_list.grid(row=2, column=0, columnspan=1)
 trusted_list.grid_propagate(0)
 
 untrusted = tk.Frame(frame2, height=300, width=250)
