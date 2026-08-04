@@ -332,8 +332,6 @@ def clientHandler(communication_socket, address):
     finally:
         print('---CLOSING CONNECTION TO CLIENT', address, '---')
         communication_socket.close()
-
-        print('---CLOSING CONNECTION TO SERVER', address, '---')
         print(all_servers, servers)
         with dict_lock_servers:
             if address in servers.keys():
@@ -345,6 +343,13 @@ def clientHandler(communication_socket, address):
         with dict_lock_ciphers:
             if address in ciphers.keys():
                 del ciphers[address]
+
+        with dict_lock_untrusted_widgets:
+            if address in untrusted_widgets:
+                untrusted_widgets[address].config(bg='red')
+        with dict_lock_initiated_widgets:
+            if address in initiated_widgets:
+                initiated_widgets[address].config(bg='red')
         print(all_servers, servers)
 
 # listen for clients
@@ -388,6 +393,8 @@ def spawn_senders():
                     text = address + ' (' + parse_user_key(key) + ')'
                     widget = tk.Label(trusted_list, text=text, wraplength=180, bg='yellow')
                     widget.grid(padx=10, pady=10)
+                    reset = tk.Button(trusted_list, text='R', command=lambda: create_sender(address, key, widget, True))
+                    reset.grid(padx=10, pady=10)
                     initiated_widgets[address] = widget
                 server = threading.Thread(target=create_sender, args=(address, key, widget, True))
                 server.start()
