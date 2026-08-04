@@ -568,15 +568,19 @@ def add_sender(address, key, trusted):
     try:
         print('ADDING SENDER TO ADDRESS:', address)
 
+        continue_logic = False
         with list_lock_all_servers:
             if address not in all_servers:
-                destroy_widget(address)
-                all_servers.append(address)
-                add_sender_gui(address, key, trusted)
+                continue_logic = True
 
-                # create the actual socket
-                server = threading.Thread(target=create_sender, args=(address, key, widget, trusted))
-                server.start()
+        if continue_logic:
+            destroy_widget(address)
+            all_servers.append(address)
+            add_sender_gui(address, key, trusted)
+
+            # create the actual socket
+            server = threading.Thread(target=create_sender, args=(address, key, widget, trusted))
+            server.start()
                 
     except Exception as e:
         print("ERROR (add_sender) FOR ADDRESS", address, ":", e)
@@ -587,32 +591,36 @@ def add_sender_for_resource(address, key, trusted, resources_string):
     try:
         print('ADDING SENDER (FOR RESOURCE) TO ADDRESS:', address)
         
+continue_logic = False
         with list_lock_all_servers:
             if address not in all_servers:
-                destroy_widget(address)
-                all_servers.append(address)
-                add_sender_gui(address, key, trusted)
+                continue_logic = True
 
-                # create the actual socket
-                client_socket, cipher = create_sender(address, key, widget, trusted)
+        if continue_logic:
+            destroy_widget(address)
+            all_servers.append(address)
+            add_sender_gui(address, key, trusted)
 
-                msg = 'response'.encode() + ':::'.encode() + cipher.encrypt(resources_string) + ':::'.encode() + sign(resources_string.encode())
+            # create the actual socket
+            client_socket, cipher = create_sender(address, key, widget, trusted)
+
+            msg = 'response'.encode() + ':::'.encode() + cipher.encrypt(resources_string) + ':::'.encode() + sign(resources_string.encode())
+            sendall(client_socket, msg)
+        else:
+            exists = False
+            with dict_lock_servers:
+                if address in servers.keys():
+                    client_socket = servers[address]
+                    
+                    with dict_lock_ciphers:
+                        if address in ciphers.keys():
+                            cipher = ciphers[address]
+
+                            exists = True
+
+            if exists:
+                msg = 'response'.encode() + ':::'.encode() + cipher.encrypt(resources_string)
                 sendall(client_socket, msg)
-            else:
-                exists = False
-                with dict_lock_servers:
-                    if address in servers.keys():
-                        client_socket = servers[address]
-                        
-                        with dict_lock_ciphers:
-                            if address in ciphers.keys():
-                                cipher = ciphers[address]
-
-                                exists = True
-
-                if exists:
-                    msg = 'response'.encode() + ':::'.encode() + cipher.encrypt(resources_string)
-                    sendall(client_socket, msg)
                 
     except Exception as e:
         print("ERROR (add_sender) FOR ADDRESS", address, ":", e)
@@ -1070,12 +1078,10 @@ def query_resource():
                 msg = 'query'.encode() + ':::'.encode() + cipher.encrypt(self_authentication_public_key_string) + ':::'.encode() + cipher.encrypt(self_ip_address) + ':::'.encode() + cipher.encrypt(label) + ':::'.encode() + time.encode() + ':::'.encode() + sign(label.encode() + time.encode())
                 sendall(client_socket, msg)
        
-        update_listbox(display)
-
         messagebox.showinfo("Message sent!", "Your message has been sent.")
     except Exception as e:
-        print("ERROR (send_message):", e)
-        messagebox.showinfo("Error (send_message)!", e)
+        print("ERROR (query_resource):", e)
+        messagebox.showinfo("Error (query_resource)!", e)
 
 # go through all_resources list and present options to user
 def get_next_resource():
