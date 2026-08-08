@@ -172,6 +172,7 @@ def recvall(this_socket, chunk_size=1024):
 # list of all server sockets
 list_lock_all_servers = threading.Lock()
 list_lock_all_requests = threading.Lock()
+list_lock_all_requests_comments = threading.Lock()
 dict_lock_servers = threading.Lock()
 dict_lock_ciphers = threading.Lock()
 dict_lock_initiated_widgets = threading.Lock()
@@ -180,6 +181,7 @@ dict_lock_untrusted_keys = threading.Lock()
 
 all_servers = []
 all_requests = []
+all_requests_comments = []
 servers = dict()
 ciphers = dict()
 initiated_widgets = dict()
@@ -388,7 +390,7 @@ def clientHandler(communication_socket, address):
                                 if len(resources_found) > 0:
                                     resources_string = json.dumps(resources_found)
 
-                                    t = threading.Thread(target=add_sender_for_resource, args=(sender_ip_address, sender_public_key, False, resources_string))
+                                    t = threading.Thread(target=add_sender_for_resource, args=('response', sender_ip_address, sender_public_key, False, resources_string))
                                     t.start()
                                 else:
                                     print('---SENDING MESSAGE TO ALL SERVERS---')
@@ -404,6 +406,47 @@ def clientHandler(communication_socket, address):
                     else:
                         print("SIGNATURE INVALID")
 
+                # comments query
+                elif command == b'query_comments':
+                    sender_public_key = cipher.decrypt(content.split(b':::')[0])
+                    
+                    sender_ip_address = cipher.decrypt(content.split(b':::')[1])
+
+                    resource_hash = cipher.decrypt(b':::'.join(content.split(b':::')[2:-2]))
+                    
+                    time = content.split(b':::')[-2].decode()
+                    
+                    signature = content.split(b':::')[-1]
+
+                    if verify(sender_public_key, signature, resource_hash.encode() + time.encode()):
+                        # prevent duplicates from blowing up
+                        with list_lock_all_requests_comments:
+                            if (sender_public_key, label, time) not in all_requests_comments:
+                                all_requests_comments.append((sender_public_key, label, time))
+
+                                # check if you have resource
+                                data_by_hash = read_comments()
+
+                                if resource_hash in data_by_hash.keys():
+                                    comments_string = json.dumps(data_by_hash[resource_hash])
+
+                                    t = threading.Thread(target=add_sender_for_comment, args=('response_comment', sender_ip_address, sender_public_key, False, comments_string))
+                                    t.start()
+                                else:
+                                    print('---SENDING MESSAGE TO ALL SERVERS---')
+                                    with dict_lock_servers:
+                                        for a, client_socket in servers.items():
+                                            print('ADDRESS:', a)
+                                
+                                            # encrypt and sign message
+                                            cipher2 = ciphers[a]
+
+                                            # TODO - implement time-to-live, so message is discarded after 10 seconds, say. this way, theres a cooldown between requests the client can make
+                                            msg = 'query_comments'.encode() + ':::'.encode() + cipher2.encrypt(sender_public_key) + ':::'.encode() + cipher2.encrypt(sender_ip_address) + ':::'.encode() + cipher2.encrypt(resource_hash) + ':::'.encode() + time.encode() + ':::'.encode() + signature
+                                            sendall(client_socket, msg)
+                    else:
+                        print("SIGNATURE INVALID")
+                        
                 # get response from query
                 elif command == b'response':
                     # msg = 'response'.encode() + ':::'.encode() + cipher.encrypt(resources_string) + ':::'.encode()
@@ -414,8 +457,19 @@ def clientHandler(communication_socket, address):
                     with list_resources_lock:
                         for resource in resources_obj:
                             all_resources.append(resource)
+                            item = 'QUERY RESPONSE: ' + resource['label'] + ' (' + parse_user_key(resource['user']) + ')'
+                            insert_to_resources_listbox(item)
 
-                    threadsafe_showinfo("Query response!", "Your query has been responded to. Click the 'NEXT' button to see the responses.")
+                # get response from comment query
+                elif command == b'response_comment':
+                    comments_string = cipher.decrypt(content)
+                    comments_obj = json.loads(comments_string)
+                    
+                    with list_comments_lock:
+                        for comment in comments_obj:
+                            all_comments.append(comment)
+                            item = 'COMMENT QUERY RESPONSE: ' + comment['label'] + ' (' + parse_user_key(comment['user']) + ')'
+                            insert_to_resources_listbox(item)
 
     except Exception as e:
         print("ERROR (clientHandler) FOR ADDRESS", address, ":", e)
@@ -599,7 +653,7 @@ def add_sender(address, key, trusted):
         threadsafe_showinfo("Error (add_sender) for address " + address, e)
 
 # create sender and immediately send resource when connection is ready
-def add_sender_for_resource(address, key, trusted, resources_string):
+def add_sender_for_resource(response_type, address, key, trusted, resources_string):
     try:
         print('ADDING SENDER (FOR RESOURCE) TO ADDRESS:', address)
         
@@ -616,7 +670,7 @@ def add_sender_for_resource(address, key, trusted, resources_string):
             # create the actual socket
             client_socket, cipher = create_sender(address, key, widget, trusted)
 
-            msg = 'response'.encode() + ':::'.encode() + cipher.encrypt(resources_string)
+            msg = response_type.encode() + ':::'.encode() + cipher.encrypt(resources_string)
             sendall(client_socket, msg)
         else:
             exists = False
@@ -631,12 +685,12 @@ def add_sender_for_resource(address, key, trusted, resources_string):
                             exists = True
 
             if exists:
-                msg = 'response'.encode() + ':::'.encode() + cipher.encrypt(resources_string)
+                msg = response_type.encode() + ':::'.encode() + cipher.encrypt(resources_string)
                 sendall(client_socket, msg)
                 
     except Exception as e:
-        print("ERROR (add_sender) FOR ADDRESS", address, ":", e)
-        threadsafe_showinfo("Error (add_sender) for address " + address, e)
+        print("ERROR (add_sender_for_resource) FOR ADDRESS", address, ":", e)
+        threadsafe_showinfo("Error (add_sender_for_resource) for address " + address, e)
 
 # create the sender socket and maintain the connection
 def create_sender(address, server_public_key, widget, trusted):
@@ -910,7 +964,7 @@ def purge_messages():
     show_messages()
 
 # reads the resources.xml file
-# <resources><resource><text>...</text> <label>...</label></resource>... </resources>
+# <resources><resource><type>...</type> <text>...</text> <label>...</label></resource>... </resources>
 def read_resources():
     try:
         # thread safety
@@ -927,15 +981,18 @@ def read_resources():
 
         for label in b_labels:
             parent = label.parent
-            details = {
-                'text': parent.find('text').text,
-                'label': label.text
-            }
-            if label.text in data_by_label.keys():
-                data_by_label[label.text].append(details)
-            else:
-                data_by_label[label.text] = [details]
-            data.append(details)
+
+            if parent.find('type').text == 'resource':
+                details = {
+                    'text': parent.find('text').text,
+                    'label': label.text,
+                    'user': parent.find('user').text
+                }
+                if label.text in data_by_label.keys():
+                    data_by_label[label.text].append(details)
+                else:
+                    data_by_label[label.text] = [details]
+                data.append(details)
            
         return data, data_by_label
     except Exception as e:
@@ -943,24 +1000,67 @@ def read_resources():
         threadsafe_showinfo("Error (read_resources)!", e)
         return dict()
 
+def read_comments():
+    try:
+        # thread safety
+        with file_lock_resources:
+            with open('resources.xml') as f:
+                data = f.read()
+
+        Bs_data = BeautifulSoup(data, "xml")
+        b_labels = Bs_data.find_all("label")
+     
+        data = []
+
+        data_by_label = dict()
+
+        for label in b_labels:
+            parent = label.parent
+
+            if parent.find('type').text == 'comment':
+                details = {
+                    'text': parent.find('text').text,
+                    'label': label.text,
+                    'user': parent.find('user').text
+                }
+                if label.text in data_by_label.keys():
+                    data_by_label[label.text].append(details)
+                else:
+                    data_by_label[label.text] = [details]
+                data.append(details)
+           
+        return data, data_by_label
+    except Exception as e:
+        print("ERROR (read_comments):", e)
+        threadsafe_showinfo("Error (read_comments)!", e)
+        return dict()
+
 # add an entry into resources.xml
-def add_resource(text, label):
+def add_resource(resource_type, text, label, user):
     try:
         with file_lock_resources:
             with open('resources.xml', 'r') as f:
                 bs = BeautifulSoup(f, 'xml')
 
         # add data
+        type_tag = bs.new_tag("type")
+        type_tag.string = resource_type
+        
         text_tag = bs.new_tag("text")
         text_tag.string = text
 
         label_tag = bs.new_tag("label")
         label_tag.string = label
+
+        user_tag = bs.new_tag("user")
+        user_tag.string = user
         
         # add subtags to msg tag
         res_tag = bs.new_tag("resource")
+        res_tag.append(type_tag)
         res_tag.append(text_tag)
         res_tag.append(label_tag)
+        res_tag.append(user_tag)
 
         # add msg tag to file
         resources = bs.find("resources")
@@ -1044,8 +1144,16 @@ def send_message():
 ####################
 
 # thread safety
+resources_listbox_lock = threading.Lock()
+
 list_resources_lock = threading.Lock()
-all_resources = deque()
+all_resources = []
+
+list_comments_lock = threading.Lock()
+all_comments = []
+
+selected_listbox_item_lock = threading.Lock()
+selected_listbox_item = None
 
 # get information and add it to resources.xml
 def create_resource():
@@ -1060,14 +1168,45 @@ def create_resource():
             threadsafe_showinfo("Error!", "Label empty!")
             return
 
-        add_resource(text, label)
+        add_resource('resource', text, label, self_authentication_public_key_string)
+        reset_resources_listbox()
 
         threadsafe_showinfo("Resource added!", "Your resource has been created.")
         
     except Exception as e:
         print("ERROR (create_resource):", e)
         threadsafe_showinfo("Error (create_resource)!", e)
-    
+
+def create_comment():
+    try:
+        text = text_text.get("1.0", "end-1c")
+        if text.strip() == '': 
+            threadsafe_showinfo("Error!", "Text empty!")
+            return
+        
+        label = label_entry.get()
+        if label.strip() == '': 
+            threadsafe_showinfo("Error!", "Label empty!")
+            return
+
+        with selected_listbox_item_lock:
+            if selected_listbox_item == None:
+                add_resource('comment', text, label, self_authentication_public_key_string)
+            else:
+                with list_resources_lock:
+                    commenting_to = all_resources[selected_listbox_item]
+                    assert commenting_to['label'] == label
+                    hashed = hashlib.sha256(commenting_to['label'].encode() + commenting_to['text'].encode()).hexdigest()
+                    add_resource('comment', text, hashed, self_authentication_public_key_string)
+        
+        reset_resources_listbox()
+
+        threadsafe_showinfo("Comment added!", "Your comment has been created.")
+        
+    except Exception as e:
+        print("ERROR (create_comment):", e)
+        threadsafe_showinfo("Error (create_comment)!", e)
+
 # query network for resource given label
 def query_resource():
     try:
@@ -1095,24 +1234,134 @@ def query_resource():
         print("ERROR (query_resource):", e)
         threadsafe_showinfo("Error (query_resource)!", e)
 
-# go through all_resources list and present options to user
-def get_next_resource():
+# query network for comments given the resource's hash
+def query_comments():
     try:
-        with list_resources_lock:
-            if len(all_resources) == 0:
-                threadsafe_showinfo("Nothing here yet", "Try again later")  
-                return
-            resource = all_resources.popleft()
+        label = label_entry.get()
+        if label.strip() == '': 
+            threadsafe_showinfo("Error!", "Label empty!")
+            return
 
-            # show the resource
-            label_entry.delete(0, tk.END)
-            label_entry.insert(0, resource['label'])
+        time = str(datetime.datetime.now())
+        
+        print('---SENDING QUERY TO ALL SERVERS---')
+        with dict_lock_servers:
+            for address, client_socket in servers.items():
+                print('ADDRESS:', address)
 
-            text_text.delete("1.0", tk.END)
-            text_text.insert("1.0", resource['text'])
+                # encrypt and sign message
+                cipher = ciphers[address]
+                self_ip_address = client_socket.getsockname()[0]
+
+                # get hashed resource TODO REPLACE HELLO
+                hashed = hashlib.sha256("Hello".encode('utf-8')).hexdigest()
+
+                msg = 'query_comments'.encode() + ':::'.encode() + cipher.encrypt(self_authentication_public_key_string) + ':::'.encode() + cipher.encrypt(self_ip_address) + ':::'.encode() + cipher.encrypt(hashed) + ':::'.encode() + time.encode() + ':::'.encode() + sign(hashed.encode() + time.encode())
+                sendall(client_socket, msg)
+       
+        threadsafe_showinfo("Query sent!", "Your query has been sent.")
     except Exception as e:
-        print("ERROR (get_next_resource):", e)
-        threadsafe_showinfo("Error (get_next_resource)!", e)  
+        print("ERROR (query_comments):", e)
+        threadsafe_showinfo("Error (query_comments)!", e)
+
+# select an item in the resources listbox
+def select_resources_listbox():
+    global selected_listbox_item
+    
+    try:
+        selected_indices = resources_listbox.curselection()
+        if selected_indices:
+            selected_indices = selected_indices[0]
+            selected_value = resources_listbox.get(selected_indices)
+            resources_listbox.itemconfig(selected_indices, bg="yellow", selectbackground="yellow")
+            
+            with selected_listbox_item_lock:
+                selected_listbox_item = selected_indices
+                label_entry.delete(0, tk.END)
+                text_text.delete("1.0", tk.END)
+
+                with list_resources_lock:
+                    if all_resources == []:
+                        with list_comments_lock:
+                            selected = all_comments[selected_listbox_item]
+                    else:
+                        selected = all_resources[selected_listbox_item]
+
+                    label_entry.insert(0, selected['label'])
+                    text_text.insert("1.0", selected['text'])
+    except Exception as e:
+        print("ERROR (select_resources_listbox):", e)
+        threadsafe_showinfo("Error (select_resources_listbox)!", e)
+
+# unselect all items in the resources listbox
+def unselect_resources_listbox():
+    global selected_listbox_item
+    
+    resources_listbox.selection_clear(0, tk.END)
+    label_entry.delete(0, tk.END)
+    text_text.delete("1.0", tk.END)
+
+    with selected_listbox_item_lock:
+        selected_listbox_item = None
+
+    for i in range(resources_listbox.size()):
+        resources_listbox.itemconfig(i, bg="white", selectbackground="grey")
+
+# replace all items in resources listbox with database values
+def reset_resources_listbox():
+    global all_resources, all_comments, selected_listbox_item
+    
+    data, _ = read_resources()
+
+    with list_resources_lock:
+        all_resources = list(data)
+
+    with list_comments_lock:
+        all_comments = []
+
+    with selected_listbox_item_lock:
+        selected_listbox_item = None
+    
+    resources_listbox.delete(0, tk.END)
+
+    for item in data:
+        display = 'RESOURCE: ' + item['label'] + ' (' + parse_user_key(item['user']) + ')'
+        resources_listbox.insert(tk.END, display)
+
+# thread safe insertion to the listbox
+def insert_to_resources_listbox(item):
+    with resources_listbox_lock:
+        resources_listbox.insert(tk.END, item)
+
+def mirror_selected_resource():
+    try:
+        text = text_text.get("1.0", "end-1c")
+        if text.strip() == '': 
+            threadsafe_showinfo("Error!", "Text empty!")
+            return
+        
+        label = label_entry.get()
+        if label.strip() == '': 
+            threadsafe_showinfo("Error!", "Label empty!")
+            return
+
+        with selected_listbox_item_lock:
+            with list_resources_lock:
+                if all_resources == []:
+                    with list_comments_lock:
+                        mirroring = all_comments[selected_listbox_item]
+                        add_resource('comment', mirroring['text'], mirroring['label'], mirroring['user'])
+                else:
+                    mirroring = all_resources[selected_listbox_item]
+                    add_resource('resource', mirroring['text'], mirroring['label'], mirroring['user'])
+        
+        reset_resources_listbox()
+
+        threadsafe_showinfo("Mirrored!", "The selected resource has been mirrored.")
+        
+    except Exception as e:
+        print("ERROR (mirror_selected_resource):", e)
+        threadsafe_showinfo("Error (mirror_selected_resource)!", e)
 
 ####################
 ## GUI
@@ -1164,30 +1413,39 @@ clear_but.grid(row=2, column=2, columnspan=1)
 
 show_messages()
 
-# FRAME THREE - RESOURCE QUERIES
+# FRAME TWO - RESOURCE QUERIES
 
-frame3 = tk.Frame(root)
-frame3.grid(padx=10, pady=10)
-
-tk.Label(frame3, text='Resources', font=("Arial", 25)).grid(row=0, column=0, columnspan=3)
-
-label_entry = tk.Entry(frame3)
-label_entry.grid(columnspan=3)
-
-text_text = tk.Text(frame3, width=50, height=10)
-text_text.grid(columnspan=3)
-
-tk.Button(frame3, text='CREATE', command=create_resource).grid(row=3, column=0)
-tk.Button(frame3, text='QUERY', command=query_resource).grid(row=3, column=1)
-tk.Button(frame3, text='NEXT', command=get_next_resource).grid(row=3, column=2)
-
-# FRAME TWO - CONNECTIONS MANAGER
 frame2 = tk.Frame(root)
 frame2.grid(padx=10, pady=10)
 
-tk.Label(frame2, text='Manage Connections', font=("Arial", 25)).grid(row=0, column=0, columnspan=2)
+tk.Label(frame2, text='Resources', font=("Arial", 25)).grid(row=0, column=0, columnspan=4)
 
-trusted = tk.Frame(frame2, height=1000, width=250)
+label_entry = tk.Entry(frame2)
+label_entry.grid(row=1, columnspan=4)
+
+text_text = tk.Text(frame2, width=50, height=10)
+text_text.grid(columnspan=4)
+
+tk.Button(frame2, text='CREATE', command=create_resource).grid(row=3, column=0)
+tk.Button(frame2, text='COMMENT', command=create_comment).grid(row=3, column=1)
+tk.Button(frame2, text='QUERY', command=query_resource).grid(row=3, column=2)
+tk.Button(frame2, text='QUERY COMMENTS', command=query_comments).grid(row=3, column=3)
+
+resources_listbox = tk.Listbox(frame2, selectmode=tk.SINGLE, width=50, height=10)
+resources_listbox.grid(columnspan=4)
+
+tk.Button(frame2, text='SELECT', command=select_resources_listbox).grid(row=5, column=0)
+tk.Button(frame2, text='UNSELECT', command=unselect_resources_listbox).grid(row=5, column=1)
+tk.Button(frame2, text='RESET', command=reset_resources_listbox).grid(row=5, column=2)
+tk.Button(frame2, text='MIRROR', command=mirror_selected_resource).grid(row=5, column=3)
+
+# FRAME THREE - CONNECTIONS MANAGER
+frame3 = tk.Frame(root)
+frame3.grid(padx=10, pady=10)
+
+tk.Label(frame3, text='Manage Connections', font=("Arial", 25)).grid(row=0, column=0, columnspan=2)
+
+trusted = tk.Frame(frame3, height=1000, width=250)
 trusted.grid(row=1, column=0, columnspan=1)
 trusted.grid_propagate(0)
 
@@ -1200,7 +1458,7 @@ trusted_list = tk.Frame(trusted, height=800, width=200)
 trusted_list.grid(row=2, column=0, columnspan=1)
 trusted_list.grid_propagate(0)
 
-untrusted = tk.Frame(frame2, height=1000, width=250)
+untrusted = tk.Frame(frame3, height=1000, width=250)
 untrusted.grid(row=1, column=1, columnspan=1)
 untrusted.grid_propagate(0)
 
@@ -1210,8 +1468,8 @@ untrusted_list = tk.Frame(untrusted, height=800, width=200)
 untrusted_list.grid(row=1, column=0, columnspan=1)
 untrusted_list.grid_propagate(0)
 
-frame2.rowconfigure(0, weight=1)
-frame2.rowconfigure(1, weight=1)
+frame3.rowconfigure(0, weight=1)
+frame3.rowconfigure(1, weight=1)
 
 Thread(target=listen).start()
 Thread(target=spawn_senders).start()

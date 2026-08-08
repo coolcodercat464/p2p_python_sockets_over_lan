@@ -1,2 +1,4 @@
 <?xml version="1.0" encoding="utf-8"?>
-<resources><resource><text>my first resource!</text><label>first resource</label></resource><resource><text>testing multiple resopnses</text><label>another first resource</label></resource></resources>
+<resources><resource><type>resource</type><text>hopefully this works!</text><label>adding comments</label><user>ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAINH3usLlJV1vJSy0iXxAU3HKBngtBaeeEPDcIYwbsb7T aidan@debian
+</user></resource><resource><type>comment</type><text>another comment</text><label>13d05562875f04dec6e3c828986137995d64b498a190e829b98fe6f4b9a59783</label><user>ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAINH3usLlJV1vJSy0iXxAU3HKBngtBaeeEPDcIYwbsb7T aidan@debian
+</user></resource></resources>
