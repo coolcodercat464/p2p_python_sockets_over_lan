@@ -19,7 +19,10 @@ import hashlib
 # misc
 import datetime
 import builtins
+
+# queues
 from collections import deque
+import queue # more thread safe apparently
 
 # database and authentication
 from bs4 import BeautifulSoup # pip install beautifulsoup4
@@ -128,7 +131,7 @@ def sendall(this_socket, content):
         this_socket.sendall(msg.encode() + content)
     except Exception as e:
         print("ERROR (clientHandler) FOR ADDRESS", this_socket.getpeername()[0], ":", e)
-        messagebox.showinfo("Error (clientHandler) for address " + this_socket.getpeername()[0], e)
+        threadsafe_showinfo("Error (clientHandler) for address " + this_socket.getpeername()[0], e)
 
 # receive all (no matter byte size)
 def recvall(this_socket, chunk_size=1024):
@@ -160,7 +163,7 @@ def recvall(this_socket, chunk_size=1024):
             return all_chunks
     except Exception as e:
         print("ERROR (clientHandler) FOR ADDRESS", this_socket.getpeername()[0], ":", e)
-        messagebox.showinfo("Error (clientHandler) for address " + this_socket.getpeername()[0], e)
+        threadsafe_showinfo("Error (clientHandler) for address " + this_socket.getpeername()[0], e)
 
 ####################
 ## LISTENER
@@ -412,11 +415,11 @@ def clientHandler(communication_socket, address):
                         for resource in resources_obj:
                             all_resources.append(resource)
 
-                    messagebox.showinfo("Query response!", "Your query has been responded to. Click the 'NEXT' button to see the responses.")
+                    threadsafe_showinfo("Query response!", "Your query has been responded to. Click the 'NEXT' button to see the responses.")
 
     except Exception as e:
         print("ERROR (clientHandler) FOR ADDRESS", address, ":", e)
-        messagebox.showinfo("Error (clientHandler) for address " + address, e)
+        threadsafe_showinfo("Error (clientHandler) for address " + address, e)
 
     finally:
         print('---CLOSING CONNECTION TO CLIENT', address, '---')
@@ -447,7 +450,7 @@ def listen():
             client.start()
         except Exception as e:
             print("LISTENER ERROR:", e)
-            messagebox.showinfo("Error (listen)!", e)
+            threadsafe_showinfo("Error (listen)!", e)
 
 ####################
 ## GENERAL CONNECTIONS
@@ -477,7 +480,7 @@ def cleanup(address):
         print("SERVERS:", all_servers)
     except Exception as e:
         print("ERROR (cleanup) FOR ADDRESS", address, ":", e)
-        messagebox.showinfo("Error (cleanup) for address " + address, e)
+        threadsafe_showinfo("Error (cleanup) for address " + address, e)
 
 # remove widget from tkinter display
 def destroy_widget(address):
@@ -494,7 +497,7 @@ def destroy_widget(address):
                         del initiated_widgets[address]
     except Exception as e:
         print("ERROR (destroy_widget) FOR ADDRESS", address, ":", e)
-        messagebox.showinfo("Error (destroy_widget) for address " + address, e)
+        threadsafe_showinfo("Error (destroy_widget) for address " + address, e)
 
 # toggle trust
 def toggle_trust(address):
@@ -504,17 +507,17 @@ def toggle_trust(address):
         if address in data.keys():
             # untrust address
             remove_connection(address)
-            messagebox.showinfo("Untrusted!", "This address has been removed from the trusted list (connections.xml).")
+            threadsafe_showinfo("Untrusted!", "This address has been removed from the trusted list (connections.xml).")
         else:
             # trust address
             with dict_lock_untrusted_keys:
                 if address in untrusted_keys.keys():
                     key = untrusted_keys[address]
                     add_connection(address, key)
-                    messagebox.showinfo("Trusted!", "This address has been added to the trusted list (connections.xml).")
+                    threadsafe_showinfo("Trusted!", "This address has been added to the trusted list (connections.xml).")
     except Exception as e:
         print("ERROR (toggle_trust) FOR ADDRESS", address, ":", e)
-        messagebox.showinfo("Error (toggle_trust) for address " + address, e)
+        threadsafe_showinfo("Error (toggle_trust) for address " + address, e)
 
 ####################
 ## SENDER
@@ -530,7 +533,7 @@ def spawn_senders():
             add_sender(address, key, True)
     except Exception as e:
         print("ERROR (spawn_senders):", e)
-        messagebox.showinfo("Error (spawn_senders)", e)
+        threadsafe_showinfo("Error (spawn_senders)", e)
 
 # gui helper function
 def add_sender_gui(address, key, trusted):
@@ -593,7 +596,7 @@ def add_sender(address, key, trusted):
                 
     except Exception as e:
         print("ERROR (add_sender) FOR ADDRESS", address, ":", e)
-        messagebox.showinfo("Error (add_sender) for address " + address, e)
+        threadsafe_showinfo("Error (add_sender) for address " + address, e)
 
 # create sender and immediately send resource when connection is ready
 def add_sender_for_resource(address, key, trusted, resources_string):
@@ -613,7 +616,7 @@ def add_sender_for_resource(address, key, trusted, resources_string):
             # create the actual socket
             client_socket, cipher = create_sender(address, key, widget, trusted)
 
-            msg = 'response'.encode() + ':::'.encode() + cipher.encrypt(resources_string) + ':::'.encode() + sign(resources_string.encode())
+            msg = 'response'.encode() + ':::'.encode() + cipher.encrypt(resources_string)
             sendall(client_socket, msg)
         else:
             exists = False
@@ -633,7 +636,7 @@ def add_sender_for_resource(address, key, trusted, resources_string):
                 
     except Exception as e:
         print("ERROR (add_sender) FOR ADDRESS", address, ":", e)
-        messagebox.showinfo("Error (add_sender) for address " + address, e)
+        threadsafe_showinfo("Error (add_sender) for address " + address, e)
 
 # create the sender socket and maintain the connection
 def create_sender(address, server_public_key, widget, trusted):
@@ -715,7 +718,7 @@ def create_sender(address, server_public_key, widget, trusted):
 
     except Exception as e:
         print("ERROR (create_sender) FOR ADDRESS", address, ":", e)
-        messagebox.showinfo("Error (create_sender) for address " + address, e)
+        threadsafe_showinfo("Error (create_sender) for address " + address, e)
 
         client_socket.close()
 
@@ -778,7 +781,7 @@ def add_connection(address, key):
                 f.write(str(bs))
     except Exception as e:
         print("ERROR (add_connection):", e)
-        messagebox.showinfo("Error (add_connection)!", e)
+        threadsafe_showinfo("Error (add_connection)!", e)
 
 # remove an entry from connections.xml
 def remove_connection(address):
@@ -796,7 +799,7 @@ def remove_connection(address):
                 f.write(str(bs))
     except Exception as e:
         print("ERROR (remove_connection):", e)
-        messagebox.showinfo("Error (remove_connection)!", e)
+        threadsafe_showinfo("Error (remove_connection)!", e)
 
 # reads the messages.xml file
 # <messages><message><text>...</text> <user>...</user> <channel>...</channel></message>... </messages>
@@ -819,7 +822,7 @@ def read_messages():
         return data
     except Exception as e:
         print("ERROR (read_messages):", e)
-        messagebox.showinfo("Error (read_messages)!", e)
+        threadsafe_showinfo("Error (read_messages)!", e)
         return dict()
 
 # check whether message exists
@@ -843,7 +846,7 @@ def message_exists(text, user, channel, time):
         return False
     except Exception as e:
         print("ERROR (message_exists):", e)
-        messagebox.showinfo("Error (message_exists)!", e)
+        threadsafe_showinfo("Error (message_exists)!", e)
         return False
 
 # get hostname (username) from user's public key
@@ -855,7 +858,7 @@ def parse_user_key(user):
         return user_hostname
     except Exception as e:
         print("ERROR (parse_user_key):", e)
-        messagebox.showinfo("Error (parse_user_key)!", e)
+        threadsafe_showinfo("Error (parse_user_key)!", e)
         return 'ERROR'
 
 # add an entry into messages.xml
@@ -896,7 +899,7 @@ def add_message(user, text, channel, time):
                 f.write(str(bs))
     except Exception as e:
         print("ERROR (add_message):", e)
-        messagebox.showinfo("Error (add_message)!", e)
+        threadsafe_showinfo("Error (add_message)!", e)
 
 # remove all messages from messages.xml
 def purge_messages():
@@ -937,7 +940,7 @@ def read_resources():
         return data, data_by_label
     except Exception as e:
         print("ERROR (read_resources):", e)
-        messagebox.showinfo("Error (read_resources)!", e)
+        threadsafe_showinfo("Error (read_resources)!", e)
         return dict()
 
 # add an entry into resources.xml
@@ -970,7 +973,7 @@ def add_resource(text, label):
                 f.write(str(bs))
     except Exception as e:
         print("ERROR (add_resource):", e)
-        messagebox.showinfo("Error (add_resource)!", e)
+        threadsafe_showinfo("Error (add_resource)!", e)
 
 ####################
 ## MESSAGE HANDLING
@@ -993,7 +996,7 @@ def show_messages(event=None):
         messages_list.config(state=tk.DISABLED) 
     except Exception as e:
         print("ERROR (show_messages):", e)
-        messagebox.showinfo("Error (show_messages)!", e)
+        threadsafe_showinfo("Error (show_messages)!", e)
 
 # update gui of messages
 def update_listbox(display):
@@ -1003,14 +1006,14 @@ def update_listbox(display):
         messages_list.config(state=tk.DISABLED) 
     except Exception as e:
         print("ERROR (update_listbox):", e)
-        messagebox.showinfo("Error (update_listbox)!", e)
+        threadsafe_showinfo("Error (update_listbox)!", e)
 
 # add a message to the database from server directly
 def send_message():
     try:
         text = send_text.get("1.0", "end-1c")
         if text.strip() == '': 
-            messagebox.showinfo("Error!", "Message empty!")
+            threadsafe_showinfo("Error!", "Message empty!")
             return
 
         # add to database
@@ -1031,10 +1034,10 @@ def send_message():
        
         update_listbox(display)
 
-        messagebox.showinfo("Message sent!", "Your message has been sent.")
+        threadsafe_showinfo("Message sent!", "Your message has been sent.")
     except Exception as e:
         print("ERROR (send_message):", e)
-        messagebox.showinfo("Error (send_message)!", e)
+        threadsafe_showinfo("Error (send_message)!", e)
 
 ####################
 ## RESOURCES HANDLING
@@ -1049,28 +1052,28 @@ def create_resource():
     try:
         text = text_text.get("1.0", "end-1c")
         if text.strip() == '': 
-            messagebox.showinfo("Error!", "Text empty!")
+            threadsafe_showinfo("Error!", "Text empty!")
             return
         
         label = label_entry.get()
         if label.strip() == '': 
-            messagebox.showinfo("Error!", "Label empty!")
+            threadsafe_showinfo("Error!", "Label empty!")
             return
 
         add_resource(text, label)
 
-        messagebox.showinfo("Resource added!", "Your resource has been created.")
+        threadsafe_showinfo("Resource added!", "Your resource has been created.")
         
     except Exception as e:
         print("ERROR (create_resource):", e)
-        messagebox.showinfo("Error (create_resource)!", e)
+        threadsafe_showinfo("Error (create_resource)!", e)
     
 # query network for resource given label
 def query_resource():
     try:
         label = label_entry.get()
         if label.strip() == '': 
-            messagebox.showinfo("Error!", "Label empty!")
+            threadsafe_showinfo("Error!", "Label empty!")
             return
 
         time = str(datetime.datetime.now())
@@ -1087,17 +1090,17 @@ def query_resource():
                 msg = 'query'.encode() + ':::'.encode() + cipher.encrypt(self_authentication_public_key_string) + ':::'.encode() + cipher.encrypt(self_ip_address) + ':::'.encode() + cipher.encrypt(label) + ':::'.encode() + time.encode() + ':::'.encode() + sign(label.encode() + time.encode())
                 sendall(client_socket, msg)
        
-        messagebox.showinfo("Query sent!", "Your query has been sent.")
+        threadsafe_showinfo("Query sent!", "Your query has been sent.")
     except Exception as e:
         print("ERROR (query_resource):", e)
-        messagebox.showinfo("Error (query_resource)!", e)
+        threadsafe_showinfo("Error (query_resource)!", e)
 
 # go through all_resources list and present options to user
 def get_next_resource():
     try:
         with list_resources_lock:
             if len(all_resources) == 0:
-                messagebox.showinfo("Nothing here yet", "Try again later")  
+                threadsafe_showinfo("Nothing here yet", "Try again later")  
                 return
             resource = all_resources.popleft()
 
@@ -1109,16 +1112,29 @@ def get_next_resource():
             text_text.insert("1.0", resource['text'])
     except Exception as e:
         print("ERROR (get_next_resource):", e)
-        messagebox.showinfo("Error (get_next_resource)!", e)  
+        threadsafe_showinfo("Error (get_next_resource)!", e)  
 
 ####################
 ## GUI
 ####################
 
+# thread safe alerts
+alert_q = queue.Queue()
+
+def threadsafe_showinfo(title, message):
+    alert_q.put(lambda: messagebox.showinfo(title, message))
+
+def check_alert_queue():
+    while not alert_q.empty():
+        func = alert_q.get()
+        func()
+    root.after(100, check_alert_queue) # Check again in 100ms
+
 # tk initialise
 root = tk.Tk()
 root.geometry('550x1000')
 root.title('P2P LAN')
+root.after(100, check_alert_queue)
 
 # FRAME ONE - messages and chat
 frame1 = tk.Frame(root)
